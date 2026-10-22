@@ -1,0 +1,11 @@
+# Egison: indexed tensor notation and symbolic differential forms
+
+**Status: inspected [Egison repository](https://github.com/egison/egison/tree/18488da87762282afd98e1ec81c1250222754833) README, tensor paths and named tests; snapshot 18488da. License file grants MIT-style permission. No Egison execution.**
+
+Egison uses a Haskell implementation for the language and library-level symbolic expressions. [lib/math/algebra/tensor.egi](https://github.com/egison/egison/blob/18488da87762282afd98e1ec81c1250222754833/lib/math/algebra/tensor.egi), [man/reference/tensor.rst](https://github.com/egison/egison/blob/18488da87762282afd98e1ec81c1250222754833/man/reference/tensor.rst) and [design/type-tensor-simple.md](https://github.com/egison/egison/blob/18488da87762282afd98e1ec81c1250222754833/design/type-tensor-simple.md) document indexed tensors and type formation. The README gives a differential-geometry example computing $\Gamma$ from $g$, $R^i{}_{jkl}$ and Cartan connection/curvature forms with **Tensor MathExpr** and **Matrix MathExpr** declarations.
+
+Exact operational caution: index completion and implicit contraction are **notations with explicit semantics**, not evidence that an arbitrary parser or automatically generated Christoffel symbol is coordinate invariant. A declared tensor array must still be interpreted at a point and with a chart convention.
+
+**Tests/dependencies:** [test/TensorInference.hs](https://github.com/egison/egison/blob/18488da87762282afd98e1ec81c1250222754833/test/TensorInference.hs), [test/CLITest.hs](https://github.com/egison/egison/blob/18488da87762282afd98e1ec81c1250222754833/test/CLITest.hs), and other test sources exist; [egison.cabal](https://github.com/egison/egison/blob/18488da87762282afd98e1ec81c1250222754833/egison.cabal) governs the Haskell implementation. This is a symbolic language and interpreter, not a dedicated WebGL/Thurston engine.
+
+**Reuse:** study readable index notation, contraction, variance, coordinate-frame distinctions and differential forms. Eye could express those operations in a future typed Idriç interface, but Egison argument parsing is **not a prerequisite** for the mathematics notebook and need not become a runtime dependency. Independently check symbolic results against [polar coordinates](../worked/polar-plane.md).
