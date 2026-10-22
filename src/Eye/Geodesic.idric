@@ -1,0 +1,259 @@
+module Eye.Geodesic
+
+import Eye.Geometry
+
+%unbound_implicits off
+
+-- A fourth-order Runge-Kutta step for (x, v, E_right, E_up, E_forward).
+-- All derivatives use the SAME moving point and its chart connection.
+-- The unindexed coordinate phase is private to the local solver; it is
+-- rewrapped as a point-indexed FramedRay before leaving this module.
+
+private
+record ChartPhase (scalar : Type) where
+  constructor Phase
+  phase_point : Coordinates scalar
+  phase_velocity : Coordinates scalar
+  phase_right : Coordinates scalar
+  phase_up : Coordinates scalar
+  phase_forward : Coordinates scalar
+
+private
+from_framed_ray : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  FramedRay geometry scalar → ChartPhase scalar
+from_framed_ray ray =
+  Phase (coordinates_at (frame_location ray))
+        (tangent_components (frame_velocity ray))
+        (tangent_components (frame_right ray))
+        (tangent_components (frame_up ray))
+        (tangent_components (frame_forward ray))
+
+private
+into_framed_ray : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  Chart geometry → ChartPhase scalar → FramedRay geometry scalar
+into_framed_ray chart (Phase point velocity right up forward) =
+  RayWithFrame (Located chart point)
+               (AtPoint velocity)
+               (AtPoint right)
+               (AtPoint up)
+               (AtPoint forward)
+
+private
+add_phases : {scalar : Type} → ScalarOperations scalar →
+             ChartPhase scalar → ChartPhase scalar → ChartPhase scalar
+add_phases numbers (Phase p v r u f) (Phase q w s t g) =
+  Phase (add_coordinates numbers p q)
+        (add_coordinates numbers v w)
+        (add_coordinates numbers r s)
+        (add_coordinates numbers u t)
+        (add_coordinates numbers f g)
+
+private
+scale_phase : {scalar : Type} → ScalarOperations scalar →
+              scalar → ChartPhase scalar → ChartPhase scalar
+scale_phase numbers amount (Phase p v r u f) =
+  Phase (scale_coordinates numbers amount p)
+        (scale_coordinates numbers amount v)
+        (scale_coordinates numbers amount r)
+        (scale_coordinates numbers amount u)
+        (scale_coordinates numbers amount f)
+
+private
+phase_valid : {geometry : ThurstonGeometry} → {scalar : Type} →
+              MetricConnection geometry scalar → Chart geometry →
+              ChartPhase scalar → Bool
+phase_valid model chart (Phase p v r u f) =
+  let numbers = numbers model
+  in valid_point model (Located chart p) &&
+     coordinate_values_finite numbers v &&
+     coordinate_values_finite numbers r &&
+     coordinate_values_finite numbers u &&
+     coordinate_values_finite numbers f
+
+private
+phase_derivative : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   MetricConnection geometry scalar → Chart geometry →
+                   ChartPhase scalar → ChartPhase scalar
+phase_derivative model chart (Phase p v r u f) =
+  let point = Located chart p
+      numbers = numbers model
+      gamma = christoffel_at model point
+      acceleration = negate_coordinates numbers (gamma (AtPoint v) (AtPoint v))
+      right_change = negate_coordinates numbers (gamma (AtPoint v) (AtPoint r))
+      up_change = negate_coordinates numbers (gamma (AtPoint v) (AtPoint u))
+      forward_change = negate_coordinates numbers (gamma (AtPoint v) (AtPoint f))
+  in Phase v acceleration right_change up_change forward_change
+
+-- A local step refuses any non-finite or chart-invalid RK4 stage. It does
+-- NOT imply the path between stages stays in the chart: the caller must
+-- request chart-exit events and coordinate changes independently.
+private
+rk4_in_chart : {geometry : ThurstonGeometry} → {scalar : Type} →
+               MetricConnection geometry scalar → Chart geometry →
+               scalar → ChartPhase scalar → Maybe (ChartPhase scalar)
+rk4_in_chart model chart length starting =
+  let arithmetic = numbers model
+      zero = scalar_zero arithmetic
+      half = scalar_divide arithmetic length (scalar_two arithmetic)
+  in if not (scalar_finite arithmetic length &&
+             scalar_less arithmetic zero length &&
+             phase_valid model chart starting)
+       then Nothing
+       else
+         let first = phase_derivative model chart starting
+             second_state = add_phases arithmetic starting
+               (scale_phase arithmetic half first)
+         in if not (phase_valid model chart second_state)
+           then Nothing
+           else
+             let second = phase_derivative model chart second_state
+                 third_state = add_phases arithmetic starting
+                   (scale_phase arithmetic half second)
+             in if not (phase_valid model chart third_state)
+               then Nothing
+               else
+                 let third = phase_derivative model chart third_state
+                     fourth_state = add_phases arithmetic starting
+                       (scale_phase arithmetic length third)
+                 in if not (phase_valid model chart fourth_state)
+                   then Nothing
+                   else
+                     let fourth = phase_derivative model chart fourth_state
+                         weighted = add_phases arithmetic
+                           (add_phases arithmetic first
+                             (scale_phase arithmetic (scalar_two arithmetic) second))
+                           (add_phases arithmetic
+                             (scale_phase arithmetic (scalar_two arithmetic) third)
+                             fourth)
+                         next = add_phases arithmetic starting
+                           (scale_phase arithmetic
+                             (scalar_divide arithmetic length (scalar_six arithmetic))
+                             weighted)
+                     in if phase_valid model chart next
+                       then Just next
+                       else Nothing
+
+private
+larger : {scalar : Type} → ScalarOperations scalar → scalar → scalar → scalar
+larger arithmetic left right =
+  if scalar_less arithmetic left right then right else left
+
+private
+absolute_difference : {scalar : Type} → ScalarOperations scalar →
+                      scalar → scalar → scalar
+absolute_difference arithmetic left right =
+  let delta = subtract_scalars arithmetic left right
+  in if scalar_less arithmetic delta (scalar_zero arithmetic)
+       then scalar_negate arithmetic delta
+       else delta
+
+private
+coordinates_error : {scalar : Type} → ScalarOperations scalar →
+                    Coordinates scalar → Coordinates scalar → scalar
+coordinates_error arithmetic (XYZ x y z) (XYZ u v w) =
+  larger arithmetic
+    (larger arithmetic
+      (absolute_difference arithmetic x u)
+      (absolute_difference arithmetic y v))
+    (absolute_difference arithmetic z w)
+
+private
+phase_error : {scalar : Type} → ScalarOperations scalar →
+              ChartPhase scalar → ChartPhase scalar → scalar
+phase_error arithmetic (Phase p v r u f) (Phase q w s t g) =
+  larger arithmetic
+    (larger arithmetic
+      (coordinates_error arithmetic p q)
+      (coordinates_error arithmetic v w))
+    (larger arithmetic
+      (coordinates_error arithmetic r s)
+      (larger arithmetic
+        (coordinates_error arithmetic u t)
+        (coordinates_error arithmetic f g)))
+
+public export
+record GramSample (scalar : Type) where
+  constructor Gram
+  right_right : scalar
+  up_up : scalar
+  forward_forward : scalar
+  right_up : scalar
+  right_forward : scalar
+  up_forward : scalar
+
+public export
+gram_sample : {geometry : ThurstonGeometry} → {scalar : Type} →
+              MetricConnection geometry scalar →
+              FramedRay geometry scalar → GramSample scalar
+gram_sample model framed =
+  let point = frame_location framed
+      pair = metric_at model point
+      r = frame_right framed
+      u = frame_up framed
+      f = frame_forward framed
+  in Gram (pair r r) (pair u u) (pair f f)
+          (pair r u) (pair r f) (pair u f)
+
+public export
+record StepDiagnostics (scalar : Type) where
+  constructor StepMeasurements
+  initial_speed_squared : scalar
+  final_speed_squared : scalar
+  initial_gram : GramSample scalar
+  final_gram : GramSample scalar
+  coordinate_difference_full_versus_halves : scalar
+
+public export
+data StepRefusal
+  = InvalidStepOrChart
+  | RefinementRequired
+
+public export
+data StepOutcome (geometry : ThurstonGeometry) (scalar : Type)
+  = StepRefused StepRefusal
+  | StepAdvanced (FramedRay geometry scalar) (StepDiagnostics scalar)
+
+-- Two half RK4 steps are compared to a full step, without pretending this
+-- difference is a certified global error bound. Accept the TWO-HALF state.
+-- Local absolute coordinate tolerance, not intrinsic distance tolerance.
+-- The event solver must independently handle seams, objects and chart exits.
+public export
+advance_checked : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  MetricConnection geometry scalar →
+                  scalar → scalar → FramedRay geometry scalar →
+                  StepOutcome geometry scalar
+advance_checked model length tolerance starting =
+  let arithmetic = numbers model
+      chart = chart_at (frame_location starting)
+      phase = from_framed_ray starting
+      half = scalar_divide arithmetic length (scalar_two arithmetic)
+  in if not (scalar_finite arithmetic tolerance &&
+             scalar_less arithmetic (scalar_zero arithmetic) tolerance)
+       then StepRefused InvalidStepOrChart
+       else case rk4_in_chart model chart length phase of
+         Nothing => StepRefused InvalidStepOrChart
+         Just full =>
+           case rk4_in_chart model chart half phase of
+             Nothing => StepRefused InvalidStepOrChart
+             Just halfway =>
+               case rk4_in_chart model chart half halfway of
+                 Nothing => StepRefused InvalidStepOrChart
+                 Just doubled =>
+                   let difference = phase_error arithmetic full doubled
+                   in if not (scalar_finite arithmetic difference &&
+                              scalar_less arithmetic difference tolerance)
+                     then StepRefused RefinementRequired
+                     else
+                       let finished = into_framed_ray chart doubled
+                           initial_point = frame_location starting
+                           final_point = frame_location finished
+                           initial_speed = metric_at model initial_point
+                             (frame_velocity starting) (frame_velocity starting)
+                           final_speed = metric_at model final_point
+                             (frame_velocity finished) (frame_velocity finished)
+                           diagnostics =
+                             StepMeasurements initial_speed final_speed
+                               (gram_sample model starting)
+                               (gram_sample model finished)
+                               difference
+                       in StepAdvanced finished diagnostics

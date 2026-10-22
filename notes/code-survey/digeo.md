@@ -1,10 +1,11 @@
-# DiGeo
+# Walnut & Burgundy DiGeo: differentiable straightest geodesics on meshes
 
-**Status:** source-inspected at Walnut & Burgundy fork README, blob f926b3235fa8937f236fe1de0aa3fde5b6e15278.  
-**License shown:** BSD-3-Clause.
+**Status: inspected exact fork [5557253](https://github.com/walnut-burgundy/DiGeo/tree/5557253bd33121ea40060f601ca0a27a29b47683), Python/CUDA source, manifest and named tests. License BSD-3-Clause. Tests not run.**
 
-DiGeo describes differentiable exponential maps, parallel transport, and geodesic tracing on triangular meshes. It targets learning and optimization, runs batched operations through Python/PyTorch and custom C++/CUDA kernels, and has CPU/GPU paths.
+The [DiGeo paper](https://arxiv.org/abs/2603.15780), *Parallelised Differentiable Straightest Geodesics for 3D Meshes* (2026), describes geodesic paths on surfaces represented by 3D meshes and differentiable operations, not the geometry of a three-dimensional Riemannian *interior*. This distinction is mathematical, not merely a performance matter.
 
-It is a valuable stress case: Eye may eventually want derivatives of an observation map, not only forward rays. Its mesh operations show what a numerical, differentiable approximation can expose.
+In [src/digeo/ops/geodesic.py](https://github.com/walnut-burgundy/DiGeo/blob/5557253bd33121ea40060f601ca0a27a29b47683/src/digeo/ops/geodesic.py), inspected names include **GeodesicInfo**, **trace_geodesics_gfd**, **trace_geodesics_abfd**, **StraighestGeodesicsGFD**, **StraighestGeodesicsABFD**, and public **trace_geodesics**. The differentiable variants subclass **torch.autograd.Function**. [geodesic_utils.py](https://github.com/walnut-burgundy/DiGeo/blob/5557253bd33121ea40060f601ca0a27a29b47683/src/digeo/ops/geodesic_utils.py) has **straightest_geodesic**, **compute_parallel_transport_edge**, **compute_parallel_transport_vertex**, and barycentric helpers. [mesh.py](https://github.com/walnut-burgundy/DiGeo/blob/5557253bd33121ea40060f601ca0a27a29b47683/src/digeo/mesh.py) defines **Mesh**, **MeshBatch**, **MeshPoint**, **MeshPointBatch**. Optional acceleration lives in **src/digeo/ops/cuda/geodesic_utils_cuda.cu**.
 
-It is not a substitute for intrinsic three-dimensional Thurston propagation. Its dependency and accelerator stack are explicitly outside this notes job. The future question is whether its semantic operation names and test shapes transfer, not whether Eye should import it.
+[pyproject.toml](https://github.com/walnut-burgundy/DiGeo/blob/5557253bd33121ea40060f601ca0a27a29b47683/pyproject.toml) lists Python >=3.10, PyTorch, NumPy, SciPy and a torch-requiring build environment. [Tests](https://github.com/walnut-burgundy/DiGeo/tree/5557253bd33121ea40060f601ca0a27a29b47683/tests) include **test_trace_geodesic.py**, **test_trace_geodesic_utils.py**, **test_mesh.py**. These confirm test sources exist, not success on a given GPU.
+
+**Interface lesson:** a typed mesh point needs its containing face and barycentric position; transporting tangent directions across edges requires discrete connection operations. This is directly relevant if Eye later places surfaces *inside* its scenes, but a CUDA surface integrator is not a ready-made geodesic flow for Nil, Sol or arbitrary smooth 3-spaces.

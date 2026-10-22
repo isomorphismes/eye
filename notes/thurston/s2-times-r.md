@@ -1,11 +1,13 @@
-# S²×ℝ — spherical product geometry
+# Product geometry: $S^2\times\mathbb R$
 
-**Model and metric.** Points are (q,z) with q∈S² and z∈ℝ. The product metric is g=g_{S²}+dz². A geodesic is a pair: its S² part is a sphere geodesic with constant speed a, and its line coordinate is z(t)=z₀+bt, with a²+b² equal to total speed squared.
+**Status: independently derived product equations; [Coulon et al. §8](https://arxiv.org/html/2010.15801) and pinned [s2e shader](https://github.com/henryseg/non-euclidean_VR/blob/5e382dc7bc1e785ba225761d10f6a9f480e48556/src/geometries/s2e/geometry/shaders/part2.glsl) inspected.**
 
-**Observer consequence.** A ray can circle in the spherical factor while climbing or descending the ℝ factor. The exponential map inherits antipodal nonuniqueness from S²: target points whose S² coordinate is antipodal to q have many horizontal departure directions. The central paper identifies S²×ℝ as one geometry where global exp inversion is problematic for rasterization.
+**Model and metric.** $X=\{(p,z):p\in S^2\subset\mathbb R^3,\ z\in\mathbb R\}$, $g=g_{S^2}+dz^2$. A tangent vector is $(v,a)$ with $p\cdot v=0$. Curvature is $+1$ on two-planes tangent to $S^2$, $0$ on planes spanned by a sphere direction and $\partial_z$; this is not a constant-curvature 3-space.
 
-**Connection.** The product Levi-Civita connection acts factorwise. A frame may split into two horizontal directions tangent to S² and one vertical direction, but that splitting is model structure and must be carried through coordinate changes.
+**Connection and geodesics.** The Levi-Civita connection splits: $\nabla_{(U,u)}(V,v)=(\nabla^{S^2}_UV,U(v))$ in the product frame (with fields extended appropriately). For initial $(p_0,z_0;v,a)$, let $b=\|v\|$. If $b>0$, $p(t)=p_0\cos(bt)+(v/b)\sin(bt)$ and $z(t)=z_0+at$; for $b=0$, the sphere position is constant. Unit speed requires $b^2+a^2=1$. Parallel transport also splits into sphere and line factors.
 
-**Quotients.** Products with circle identifications and more general isometry groups can make compact examples. A generator may combine a sphere isometry with a vertical translation, so it can rotate the horizontal frame while translating position.
+**Isometries and quotients.** Obvious isometries are $O(3)$ on the sphere and translations/reflections on $\mathbb R$. Quotients can identify vertical positions or combine rotations with a vertical translation. The metric and deck isometries are separate inputs; a vertical periodic identification changes repeated imagery without changing local ray equations.
 
-**Numerical boundary.** Exact factorwise propagation offers a clean verification target. The difficulty is global visibility and multiple directions, not local ODE stiffness.
+**Observer example.** An observer facing entirely in a sphere direction ($a=0,b=1$) completes a great circle after length $2\pi$ at fixed height. With $a\ne0$, the projection to $S^2$ is periodic, while the 3D trajectory rises at constant speed, usually not returning to the same 3D point.
+
+**Numerical limits.** Several ray directions may meet a scene point because the sphere factor's exponential is not injective. A naive 3D Euclidean chord underestimates path length but may not be a certified stepping radius. Product separation is an exact oracle for implementation tests.

@@ -1,0 +1,67 @@
+module Eye.Observer
+
+import Eye.Geometry
+import Eye.Geodesic
+
+%unbound_implicits off
+
+-- The view plane lives in the OBSERVER'S tangent fiber. Screen coordinates
+-- are dimensionless coefficients, not offsets of points in ambient R^3.
+-- Normalization is metric-dependent and can fail at zero/non-finite length.
+
+public export
+ray_through_screen : {geometry : ThurstonGeometry} → {scalar : Type} →
+                     MetricConnection geometry scalar →
+                     Observer geometry scalar →
+                     scalar → scalar → Maybe (RayState geometry scalar)
+ray_through_screen model observer horizontal vertical =
+  let arithmetic = numbers model
+      point = observer_location observer
+      camera_direction =
+        add_coordinates arithmetic
+          (tangent_components (observer_forward observer))
+          (add_coordinates arithmetic
+            (scale_coordinates arithmetic horizontal
+              (tangent_components (observer_right observer)))
+            (scale_coordinates arithmetic vertical
+              (tangent_components (observer_up observer))))
+      unnormalized = AtPoint camera_direction
+      squared_length = metric_at model point unnormalized unnormalized
+  in if not (valid_point model point &&
+             scalar_finite arithmetic horizontal &&
+             scalar_finite arithmetic vertical &&
+             scalar_finite arithmetic squared_length &&
+             scalar_less arithmetic (scalar_zero arithmetic) squared_length)
+       then Nothing
+       else case scalar_square_root arithmetic squared_length of
+         Nothing => Nothing
+         Just length =>
+           if not (scalar_finite arithmetic length &&
+                   scalar_less arithmetic (scalar_zero arithmetic) length)
+             then Nothing
+             else
+               let inverse_length = scalar_divide arithmetic
+                     (scalar_one arithmetic) length
+               in Just (RayAt point
+                    (AtPoint (scale_coordinates arithmetic inverse_length camera_direction)))
+
+-- We do not offer an unsafe function to attach an arbitrary ray to an
+-- observer. A ray from another point has another tangent fiber.
+public export
+framed_ray_through_screen : {geometry : ThurstonGeometry} → {scalar : Type} →
+                            MetricConnection geometry scalar →
+                            Observer geometry scalar →
+                            scalar → scalar → Maybe (FramedRay geometry scalar)
+framed_ray_through_screen model observer horizontal vertical =
+  case ray_through_screen model observer horizontal vertical of
+    Nothing => Nothing
+    Just ray =>
+      -- This ray has just been built at observer_location; resampling its
+      -- own components here is a local implementation detail, not a
+      -- general rebase operation.
+      Just (RayWithFrame
+             (observer_location observer)
+             (AtPoint (tangent_components (velocity ray)))
+             (observer_right observer)
+             (observer_up observer)
+             (observer_forward observer))

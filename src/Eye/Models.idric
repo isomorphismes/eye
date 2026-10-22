@@ -1,0 +1,346 @@
+module Eye.Models
+
+import Eye.Geometry
+
+%unbound_implicits off
+
+-- The eight LOCAL coordinate models. Chart changes, deck isometries, global
+-- exact flows and conservative distance estimates are separate capabilities.
+-- Formula conventions match notes/thurston/ and must not be silently mixed.
+
+private
+finite_point : {geometry : ThurstonGeometry} → {scalar : Type} →
+               ScalarOperations scalar → Point geometry scalar → Bool
+finite_point arithmetic point =
+  coordinate_values_finite arithmetic (coordinates_at point)
+
+private
+positive_second : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ScalarOperations scalar → Point geometry scalar → Bool
+positive_second arithmetic point =
+  case coordinates_at point of
+    XYZ _ y _ =>
+      finite_point arithmetic point &&
+      scalar_less arithmetic (scalar_zero arithmetic) y
+
+private
+positive_third : {geometry : ThurstonGeometry} → {scalar : Type} →
+                 ScalarOperations scalar → Point geometry scalar → Bool
+positive_third arithmetic point =
+  case coordinates_at point of
+    XYZ _ _ z =>
+      finite_point arithmetic point &&
+      scalar_less arithmetic (scalar_zero arithmetic) z
+
+private
+flat_metric : {geometry : ThurstonGeometry} → {scalar : Type} →
+              ScalarOperations scalar → (p : Point geometry scalar) →
+              Tangent p → Tangent p → scalar
+flat_metric arithmetic point (AtPoint v) (AtPoint w) =
+  dot_coordinates arithmetic v w
+
+private
+zero_connection : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ScalarOperations scalar → (p : Point geometry scalar) →
+                  Tangent p → Tangent p → Coordinates scalar
+zero_connection arithmetic point v w = zero_coordinates arithmetic
+
+private
+spherical_three_factor : {scalar : Type} →
+                         ScalarOperations scalar → Coordinates scalar → scalar
+spherical_three_factor arithmetic xyz =
+  let one = scalar_one arithmetic
+      radius_sq = dot_coordinates arithmetic xyz xyz
+      denom = scalar_add arithmetic one radius_sq
+  in scalar_divide arithmetic (scalar_four arithmetic)
+       (scalar_multiply arithmetic denom denom)
+
+private
+spherical_gradient : {scalar : Type} →
+                     ScalarOperations scalar → Coordinates scalar → Coordinates scalar
+spherical_gradient arithmetic xyz =
+  let denom = scalar_add arithmetic (scalar_one arithmetic)
+                (dot_coordinates arithmetic xyz xyz)
+      coefficient = scalar_divide arithmetic
+                      (scalar_negate arithmetic (scalar_two arithmetic))
+                      denom
+  in scale_coordinates arithmetic coefficient xyz
+
+-- Conformal metric e^(2f)δ: Γ(v,w) = df(v)w + df(w)v - <v,w>grad(f).
+private
+conformal_connection : {scalar : Type} →
+                       ScalarOperations scalar →
+                       Coordinates scalar → Coordinates scalar →
+                       Coordinates scalar → Coordinates scalar
+conformal_connection arithmetic grad v w =
+  let df_v = dot_coordinates arithmetic grad v
+      df_w = dot_coordinates arithmetic grad w
+      v_dot_w = dot_coordinates arithmetic v w
+  in subtract_coordinates arithmetic
+       (add_coordinates arithmetic
+         (scale_coordinates arithmetic df_v w)
+         (scale_coordinates arithmetic df_w v))
+       (scale_coordinates arithmetic v_dot_w grad)
+
+private
+sphere3_metric : {scalar : Type} →
+                 ScalarOperations scalar → (p : Point Spherical3 scalar) →
+                 Tangent p → Tangent p → scalar
+sphere3_metric arithmetic point (AtPoint v) (AtPoint w) =
+  scalar_multiply arithmetic
+    (spherical_three_factor arithmetic (coordinates_at point))
+    (dot_coordinates arithmetic v w)
+
+private
+sphere3_gamma : {scalar : Type} →
+                ScalarOperations scalar → (p : Point Spherical3 scalar) →
+                Tangent p → Tangent p → Coordinates scalar
+sphere3_gamma arithmetic point (AtPoint v) (AtPoint w) =
+  conformal_connection arithmetic
+    (spherical_gradient arithmetic (coordinates_at point)) v w
+
+private
+h3_metric : {scalar : Type} →
+            ScalarOperations scalar → (p : Point Hyperbolic3 scalar) →
+            Tangent p → Tangent p → scalar
+h3_metric arithmetic point (AtPoint v) (AtPoint w) =
+  case coordinates_at point of
+    XYZ _ _ z =>
+      scalar_divide arithmetic (dot_coordinates arithmetic v w)
+        (scalar_multiply arithmetic z z)
+
+private
+h3_gamma : {scalar : Type} →
+           ScalarOperations scalar → (p : Point Hyperbolic3 scalar) →
+           Tangent p → Tangent p → Coordinates scalar
+h3_gamma arithmetic point (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ _ _ z =>
+      let multiply = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          divide = scalar_divide arithmetic
+          neg = scalar_negate arithmetic
+          cross_x = add (multiply vx wz) (multiply vz wx)
+          cross_y = add (multiply vy wz) (multiply vz wy)
+          vertical = subtract_scalars arithmetic
+                       (add (multiply vx wx) (multiply vy wy))
+                       (multiply vz wz)
+      in XYZ (neg (divide cross_x z))
+             (neg (divide cross_y z))
+             (divide vertical z)
+
+private
+sphere2_product_metric : {scalar : Type} →
+                         ScalarOperations scalar →
+                         (p : Point Sphere2TimesLine scalar) →
+                         Tangent p → Tangent p → scalar
+sphere2_product_metric arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ x y _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          one = scalar_one arithmetic
+          denom = add one (add (mul x x) (mul y y))
+          conformal_sq = scalar_divide arithmetic (scalar_four arithmetic) (mul denom denom)
+      in add (mul conformal_sq (add (mul vx wx) (mul vy wy))) (mul vz wz)
+
+private
+sphere2_product_gamma : {scalar : Type} →
+                        ScalarOperations scalar →
+                        (p : Point Sphere2TimesLine scalar) →
+                        Tangent p → Tangent p → Coordinates scalar
+sphere2_product_gamma arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ x y _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          denom = add (scalar_one arithmetic) (add (mul x x) (mul y y))
+          minus_two_over = scalar_divide arithmetic
+            (scalar_negate arithmetic (scalar_two arithmetic)) denom
+          grad = XYZ (mul minus_two_over x) (mul minus_two_over y) (scalar_zero arithmetic)
+      in conformal_connection arithmetic grad
+           (XYZ vx vy (scalar_zero arithmetic))
+           (XYZ wx wy (scalar_zero arithmetic))
+
+private
+h2_product_metric : {scalar : Type} →
+                    ScalarOperations scalar →
+                    (p : Point Hyperbolic2TimesLine scalar) →
+                    Tangent p → Tangent p → scalar
+h2_product_metric arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ _ y _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+      in add (scalar_divide arithmetic
+               (add (mul vx wx) (mul vy wy)) (mul y y))
+             (mul vz wz)
+
+private
+h2_product_gamma : {scalar : Type} →
+                   ScalarOperations scalar →
+                   (p : Point Hyperbolic2TimesLine scalar) →
+                   Tangent p → Tangent p → Coordinates scalar
+h2_product_gamma arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ _ y _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          neg = scalar_negate arithmetic
+          horizontal = add (mul vx wy) (mul vy wx)
+          vertical = subtract_scalars arithmetic (mul vx wx) (mul vy wy)
+      in XYZ (neg (scalar_divide arithmetic horizontal y))
+             (scalar_divide arithmetic vertical y)
+             (scalar_zero arithmetic)
+
+-- Nil uses g = dx² + dy² + (dz - x dy)², NOT the distinct symmetric gauge.
+private
+nil_metric : {scalar : Type} →
+             ScalarOperations scalar → (p : Point Nil3 scalar) →
+             Tangent p → Tangent p → scalar
+nil_metric arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ x _ _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          vertical_v = subtract_scalars arithmetic vz (mul x vy)
+          vertical_w = subtract_scalars arithmetic wz (mul x wy)
+      in add (add (mul vx wx) (mul vy wy))
+             (mul vertical_v vertical_w)
+
+private
+nil_gamma : {scalar : Type} →
+            ScalarOperations scalar → (p : Point Nil3 scalar) →
+            Tangent p → Tangent p → Coordinates scalar
+nil_gamma arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ x _ _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          two = scalar_two arithmetic
+          xy = add (mul vx wy) (mul vy wx)
+          xz = add (mul vx wz) (mul vz wx)
+          yz = add (mul vy wz) (mul vz wy)
+          x_sq_minus_one = subtract_scalars arithmetic
+                             (mul x x) (scalar_one arithmetic)
+      in XYZ
+           (subtract_scalars arithmetic (scalar_divide arithmetic yz two) (mul x (mul vy wy)))
+           (scalar_divide arithmetic (subtract_scalars arithmetic (mul x xy) xz) two)
+           (scalar_divide arithmetic
+             (subtract_scalars arithmetic (mul x_sq_minus_one xy) (mul x xz)) two)
+
+-- Sol convention: g = exp(2z) dx² + exp(-2z) dy² + dz².
+private
+sol_metric : {scalar : Type} →
+             ScalarOperations scalar → (p : Point Sol3 scalar) →
+             Tangent p → Tangent p → scalar
+sol_metric arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ _ _ z =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          e = scalar_exponential arithmetic (mul (scalar_two arithmetic) z)
+          inv_e = scalar_divide arithmetic (scalar_one arithmetic) e
+      in add (add (mul e (mul vx wx)) (mul inv_e (mul vy wy)))
+             (mul vz wz)
+
+private
+sol_gamma : {scalar : Type} →
+            ScalarOperations scalar → (p : Point Sol3 scalar) →
+            Tangent p → Tangent p → Coordinates scalar
+sol_gamma arithmetic point
+  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ wx wy wz)) =
+  case coordinates_at point of
+    XYZ _ _ z =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          e = scalar_exponential arithmetic (mul (scalar_two arithmetic) z)
+          inv_e = scalar_divide arithmetic (scalar_one arithmetic) e
+      in XYZ
+           (add (mul vx wz) (mul vz wx))
+           (scalar_negate arithmetic (add (mul vy wz) (mul vz wy)))
+           (subtract_scalars arithmetic (mul inv_e (mul vy wy)) (mul e (mul vx wx)))
+
+-- Lifted θ is a REAL coordinate, never a modulo-2π angle.
+-- g = (dx/y)² + (dy/y)² + (dθ + dx/y)².
+private
+sl2_metric : {scalar : Type} →
+             ScalarOperations scalar → (p : Point UniversalCoverSL2 scalar) →
+             Tangent p → Tangent p → scalar
+sl2_metric arithmetic point
+  (AtPoint (XYZ vx vy vt)) (AtPoint (XYZ wx wy wt)) =
+  case coordinates_at point of
+    XYZ _ y _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          divide = scalar_divide arithmetic
+          ax = divide vx y
+          bx = divide wx y
+          ay = divide vy y
+          by = divide wy y
+          fiber_v = add vt ax
+          fiber_w = add wt bx
+      in add (add (mul ax bx) (mul ay by)) (mul fiber_v fiber_w)
+
+private
+sl2_gamma : {scalar : Type} →
+            ScalarOperations scalar → (p : Point UniversalCoverSL2 scalar) →
+            Tangent p → Tangent p → Coordinates scalar
+sl2_gamma arithmetic point
+  (AtPoint (XYZ vx vy vt)) (AtPoint (XYZ wx wy wt)) =
+  case coordinates_at point of
+    XYZ _ y _ =>
+      let mul = scalar_multiply arithmetic
+          add = scalar_add arithmetic
+          divide = scalar_divide arithmetic
+          two = scalar_two arithmetic
+          xy = add (mul vx wy) (mul vy wx)
+          xt = add (mul vx wt) (mul vt wx)
+          yt = add (mul vy wt) (mul vt wy)
+          first = scalar_negate arithmetic
+                    (add (divide (mul (scalar_add arithmetic two (scalar_one arithmetic)) xy)
+                                 (mul two y))
+                         (divide yt two))
+          second = subtract_scalars arithmetic
+                     (add (divide (mul two (mul vx wx)) y) (divide xt two))
+                     (divide (mul vy wy) y)
+          third = add (divide xy (mul y y)) (divide yt (mul two y))
+      in XYZ first second third
+
+-- Dispatch chooses the metric/connection, NOT an ODE solver, GPU, quotient,
+-- shape-intersector, scene, or ABI. This is real code for all eight local models.
+public export
+model_for : {scalar : Type} →
+            (geometry : ThurstonGeometry) →
+            ScalarOperations scalar → MetricConnection geometry scalar
+model_for Euclidean3 arithmetic =
+  WithConnection arithmetic (finite_point arithmetic)
+    (flat_metric arithmetic) (zero_connection arithmetic)
+model_for Spherical3 arithmetic =
+  WithConnection arithmetic (finite_point arithmetic)
+    (sphere3_metric arithmetic) (sphere3_gamma arithmetic)
+model_for Hyperbolic3 arithmetic =
+  WithConnection arithmetic (positive_third arithmetic)
+    (h3_metric arithmetic) (h3_gamma arithmetic)
+model_for Sphere2TimesLine arithmetic =
+  WithConnection arithmetic (finite_point arithmetic)
+    (sphere2_product_metric arithmetic) (sphere2_product_gamma arithmetic)
+model_for Hyperbolic2TimesLine arithmetic =
+  WithConnection arithmetic (positive_second arithmetic)
+    (h2_product_metric arithmetic) (h2_product_gamma arithmetic)
+model_for Nil3 arithmetic =
+  WithConnection arithmetic (finite_point arithmetic)
+    (nil_metric arithmetic) (nil_gamma arithmetic)
+model_for Sol3 arithmetic =
+  WithConnection arithmetic (finite_point arithmetic)
+    (sol_metric arithmetic) (sol_gamma arithmetic)
+model_for UniversalCoverSL2 arithmetic =
+  WithConnection arithmetic (positive_second arithmetic)
+    (sl2_metric arithmetic) (sl2_gamma arithmetic)

@@ -1,0 +1,54 @@
+module Eye.Trace
+
+import Eye.Geometry
+import Eye.Geodesic
+import Eye.Visibility
+import Eye.Quotient
+
+%unbound_implicits off
+
+-- This is the high-level, renderer-neutral ray decision loop for ONE event
+-- window. The event provider, not this dispatcher, must certify complete
+-- event coverage, accurate hit state, and frame transport at a root.
+-- The program refuses to guess what to do with a chart exit or coincident hit.
+
+public export
+data TraceResult (geometry : ThurstonGeometry) (scalar : Type)
+  = NeedRefinement scalar
+  | CannotAdvance StepRefusal
+  | Continued (LiftedRay geometry scalar) (StepDiagnostics scalar)
+  | StruckSurface Number (GeodesicHit geometry scalar)
+  | CrossedPairedFace (LiftedRay geometry scalar)
+  | MissingFaceIsometry Number
+  | NeedsChartTransition scalar
+
+public export
+trace_one_window : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   MetricConnection geometry scalar →
+                   scalar →
+                   (Number → Maybe (DeckAction geometry scalar)) →
+                   LiftedRay geometry scalar →
+                   EventWindow geometry scalar →
+                   TraceResult geometry scalar
+trace_one_window model tolerance action_for_face lifted window =
+  case first_event (numbers model) window of
+    MustRefine horizon => NeedRefinement horizon
+    ClearBefore horizon =>
+      case advance_checked model horizon tolerance (ray_and_frame lifted) of
+        StepRefused failure => CannotAdvance failure
+        StepAdvanced finished diagnostics =>
+          Continued
+            (OnUniversalCover finished (crossed_deck_generators lifted))
+            diagnostics
+    Earliest (SceneSurface label hit) =>
+      StruckSurface label hit
+    Earliest (FundamentalFace label hit) =>
+      case action_for_face label of
+        Nothing => MissingFaceIsometry label
+        Just deck =>
+          CrossedPairedFace
+            (through_paired_face deck
+              (OnUniversalCover (frame_at_hit hit)
+                (crossed_deck_generators lifted)))
+    Earliest (CoordinateChartExit length) =>
+      NeedsChartTransition length

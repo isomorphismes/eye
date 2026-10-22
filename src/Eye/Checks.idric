@@ -1,0 +1,80 @@
+module Eye.Checks
+
+import Eye.Geometry
+import Eye.Geodesic
+
+%unbound_implicits off
+
+-- Runtime checks are separate from mathematical proofs and from the
+-- validity of an approximate ODE trajectory. They still help expose
+-- wrong metrics, untransported frames, and numerical drift.
+
+public export
+absolute_difference : {scalar : Type} → ScalarOperations scalar →
+                      scalar → scalar → scalar
+absolute_difference arithmetic left right =
+  let delta = subtract_scalars arithmetic left right
+  in if scalar_less arithmetic delta (scalar_zero arithmetic)
+       then scalar_negate arithmetic delta
+       else delta
+
+public export
+within_tolerance : {scalar : Type} → ScalarOperations scalar →
+                   scalar → scalar → scalar → Bool
+within_tolerance arithmetic observed expected tolerance =
+  scalar_finite arithmetic observed &&
+  scalar_less arithmetic (absolute_difference arithmetic observed expected) tolerance
+
+public export
+orthonormal_frame : {geometry : ThurstonGeometry} → {scalar : Type} →
+                    MetricConnection geometry scalar →
+                    scalar → FramedRay geometry scalar → Bool
+orthonormal_frame model tolerance ray =
+  let arithmetic = numbers model
+      gram = gram_sample model ray
+      one = scalar_one arithmetic
+      zero = scalar_zero arithmetic
+      close = within_tolerance arithmetic
+  in scalar_less arithmetic zero tolerance &&
+     close (right_right gram) one tolerance &&
+     close (up_up gram) one tolerance &&
+     close (forward_forward gram) one tolerance &&
+     close (right_up gram) zero tolerance &&
+     close (right_forward gram) zero tolerance &&
+     close (up_forward gram) zero tolerance
+
+public export
+parallel_transport_preserves_gram : {geometry : ThurstonGeometry} →
+                                    {scalar : Type} →
+                                    MetricConnection geometry scalar →
+                                    scalar →
+                                    FramedRay geometry scalar →
+                                    FramedRay geometry scalar → Bool
+parallel_transport_preserves_gram model tolerance before after =
+  let arithmetic = numbers model
+      original = gram_sample model before
+      finished = gram_sample model after
+      close = within_tolerance arithmetic
+  in scalar_less arithmetic (scalar_zero arithmetic) tolerance &&
+     close (right_right finished) (right_right original) tolerance &&
+     close (up_up finished) (up_up original) tolerance &&
+     close (forward_forward finished) (forward_forward original) tolerance &&
+     close (right_up finished) (right_up original) tolerance &&
+     close (right_forward finished) (right_forward original) tolerance &&
+     close (up_forward finished) (up_forward original) tolerance
+
+public export
+geodesic_speed_preserved : {geometry : ThurstonGeometry} →
+                           {scalar : Type} →
+                           MetricConnection geometry scalar →
+                           scalar →
+                           FramedRay geometry scalar →
+                           FramedRay geometry scalar → Bool
+geodesic_speed_preserved model tolerance before after =
+  let before_point = frame_location before
+      after_point = frame_location after
+      original = metric_at model before_point
+        (frame_velocity before) (frame_velocity before)
+      finished = metric_at model after_point
+        (frame_velocity after) (frame_velocity after)
+  in within_tolerance (numbers model) finished original tolerance

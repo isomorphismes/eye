@@ -1,10 +1,15 @@
-# geometry-central and Keenan Crane collaborators
+# geometry-central: accurate surface tools, different ambient problem
 
-**Status:** source-inspected: README and public trace-geodesic/vector-heat documentation.  
-**Core API observed:** traceGeodesic(IntrinsicGeometryInterface, SurfacePoint, Vector2, TraceOptions).
+**Status: inspected pinned [headers/source tree 019669dd](https://github.com/nmwsharp/geometry-central/tree/019669ddabda05e0f71fa3587cfb3c1dadf19cb8), [official geodesic paths](https://geometry-central.net/surface/algorithms/geodesic_paths/) and [vector heat](https://geometry-central.net/surface/algorithms/vector_heat_method/) docs. License MIT. No local C++ build/test run.**
 
-geometry-central is C++ geometry processing focused on surface meshes. Its tracing routine advances a straightest path across a ManifoldSurfaceMesh from a point and tangent 2-vector, returning endpoint, path points, ending direction, and boundary outcome. Its vector heat solver offers parallel transport and logarithmic maps on intrinsic surface geometry.
+Concrete C++ files:
+- [include/geometrycentral/surface/trace_geodesic.h](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/include/geometrycentral/surface/trace_geodesic.h), [src/surface/trace_geodesic.cpp](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/src/surface/trace_geodesic.cpp): **traceGeodesic(IntrinsicGeometryInterface&, SurfacePoint, Vector2, TraceOptions)**, returning **TraceGeodesicResult**. It traces straightest paths on a 2D mesh, with the trace vector encoding initial direction and path length.
+- [vector_heat_method.h](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/include/geometrycentral/surface/vector_heat_method.h) / [cpp](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/src/surface/vector_heat_method.cpp): **VectorHeatSolver**, parallel transport estimates and **computeLogMap**.
+- [exact_geodesics.h](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/include/geometrycentral/surface/exact_geodesics.h), [heat_method_distance.h](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/include/geometrycentral/surface/heat_method_distance.h): exact **polyhedral** distance versus approximate heat distance—different guarantees.
+- [intrinsic_geometry_interface.h](https://github.com/nmwsharp/geometry-central/blob/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/include/geometrycentral/surface/intrinsic_geometry_interface.h) decouples the intrinsic metric on a surface from 3D vertex positions.
 
-This is important evidence for an interface: an output direction should be explicitly a direction at the ending point, and boundary events deserve first-class status. It also demonstrates that intrinsic calculations need not depend on an ambient embedding.
+**Dependencies/tests:** C++/CMake with Eigen 3.3+ dependency noted by the root CMake configuration; [test/src](https://github.com/nmwsharp/geometry-central/tree/019669ddabda05e0f71fa3587cfb3c1dadf19cb8/test/src) includes mesh/geometry test files. The listed test directory does not prove that each algorithm has dedicated regression coverage.
 
-The boundary is sharp: a two-dimensional triangular mesh is not a general smooth three-dimensional homogeneous world. Mesh edges, triangle transitions, and mesh boundary are not quotient generators or arbitrary cut loci. Its C++ and Eigen dependencies are not being introduced into Eye.
+**Crucial limitation:** a surface mesh is locally 2-dimensional, even when embedded in $\mathbb R^3$. Tracing a geodesic **on that surface** is not equivalent to propagating a ray **through arbitrary Thurston 3-space**. The heat method approximates transport and distances rather than supplying exact geodesic spray for Nil or Sol.
+
+**Potential mathematical reuse:** intrinsic-versus-extrinsic interfaces, mesh normals/geodesics if Eye later renders embedded surfaces, and numerical test patterns. Do not claim it solves intrinsic 3D visibility.

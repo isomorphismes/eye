@@ -1,42 +1,119 @@
-# Eye — seeing from inside a geometry
+# Eye — geometry from the observer's tangent space
 
-Eye is a mathematical research corpus for a question graphics libraries normally conceal: **what does an observer at a point of a curved space see?** The answer begins with a point, a tangent frame at that point, and a rule that advances both along a ray. It does not begin with a global direction vector or a rendering API.
+**Current state:** mathematical research notes plus the first **source-authored Idriç geometry implementation**. Eye studies what an observer sees when rays propagate intrinsically in a three-dimensional Riemannian space, including quotients. No compiler qualification, graphics backend, APK, native binary, or rendered output is claimed.
 
-This first corpus separates four kinds of claim.
+## First Idriç implementation
 
-- **Geometry:** a metric, connection, geodesic flow, quotient action, and point-indexed direction spaces.
-- **Observation:** an observer frame gives screen directions; geodesic propagation gives candidate light paths.
-- **Computation:** a closed form, symbolic calculation, numerical integrator, mesh routine, or distance underestimator has a stated domain.
-- **Rendering:** a graphics backend is a later consumer of the preceding data, not an owner of the mathematics.
+[Implementation and boundaries](docs/IMPLEMENTATION.md) ·
+[Eight local models](src/Eye/Models.idric) ·
+[Point-indexed state](src/Eye/Geometry.idric) ·
+[Geodesic and frame propagation](src/Eye/Geodesic.idric) ·
+[Observer rays](src/Eye/Observer.idric) ·
+[Scene and event ordering](src/Eye/Visibility.idric) ·
+[Quotient action](src/Eye/Quotient.idric) ·
+[Intrinsic surface incidence](src/Eye/Incidence.idric) ·
+[Local lighting](src/Eye/Optics.idric) ·
+[Ray-step decisions](src/Eye/Trace.idric) ·
+[Backend packet boundary](src/Eye/Handoff.idric) ·
+[Verification checks](src/Eye/Checks.idric) ·
+[Reference cases](tests/REFERENCE.md).
 
-The central state is a dependent pair:
+All eight local metrics and Christoffel contractions have been independently
+matched against the Levi-Civita formula. **The .idric modules have not been
+typechecked or executed with the maintained compiler.** Global chart
+transitions, certified intersection/event oracles, backend wiring, and
+rendering are still missing. The numerical stepper exposes diagnostics,
+not a certified global error bound.
 
-~~~text
-RayState ≃ Σ (point : M), T_point M
-~~~
+The semantic owner is Idriç; C, Lua, NDK and DEX are target/native boundaries
+rather than duplicate geometric engines. Fulton, Regina and Coxeter contribute
+distinct mathematical services without becoming runtime requirements.
 
-A direction at one point and a direction at another point are elements of different vector spaces. A coordinate triple represents both only after a chart or frame choice. Parallel transport compares them along a specified path.
+## Start here
 
-## Read this corpus
+1. [The point-indexed ray state](notes/foundations/points-and-tangent-types.md): a direction lives at a point, not in a universal vector space.
+2. [Geodesic initial-value equations](notes/foundations/geodesic-initial-value.md) and [parallel transport](notes/foundations/parallel-transport-holonomy.md).
+3. [Observer-local rays](notes/seeing/observer-local-rays.md), [quotient boundaries](notes/seeing/quotients-and-teleportation.md), and [lighting versus optics](notes/seeing/lighting-and-optics.md).
+4. [Ray-Marching Thurston Geometries](notes/sources/ray-marching-thurston.md), the principal source, followed by [the eight models](#the-eight-geometries).
+5. [Checked worked calculations](#worked-calculations) and [typed architecture](notes/architecture/dependent-types.md).
 
-1. [Sources and evidence](notes/sources/README.md).
-2. [Foundations](notes/foundations/README.md).
-3. [Seeing](notes/seeing/README.md).
-4. [Eight Thurston geometries](notes/thurston/README.md).
-5. [Code survey](notes/code-survey/README.md).
-6. [Worked checks](notes/worked/README.md).
-7. [Architecture](notes/architecture/README.md).
+Mathematical state: $\mathrm{RayState}=\sum_{x:M}T_xM$. A ray is an initial-value problem for the geodesic spray on $TM$; its optical meaning requires an additional modeling decision. Camera orientation is an orthonormal frame at the camera's point.
 
-## Corpus status
+## Foundations
 
-The documents are original exposition. Each source note labels claims **source-inspected**, **metadata-only**, **derived-and-checked**, or **open**. The corpus records neither an executable renderer nor a claim that a formal proof library is a numerical raytracer.
+[Points and tangent fibers](notes/foundations/points-and-tangent-types.md) ·
+[Charts and frames](notes/foundations/charts-and-frames.md) ·
+[Metrics and connections](notes/foundations/metrics-and-connections.md) ·
+[Christoffel transformation](notes/foundations/christoffel-transformation.md) ·
+[Tensor derivatives](notes/foundations/covariant-tensor-derivatives.md) ·
+[Geodesic initial values](notes/foundations/geodesic-initial-value.md) ·
+[Transport and holonomy](notes/foundations/parallel-transport-holonomy.md) ·
+[Curvature and Jacobi fields](notes/foundations/curvature-and-jacobi.md) ·
+[Exponential and cut locus](notes/foundations/exponential-cut-locus.md) ·
+[Intrinsic versus extrinsic](notes/foundations/intrinsic-versus-extrinsic.md).
 
-| Subject | Entry point |
+## Seeing and simulation
+
+[Observer rays](notes/seeing/observer-local-rays.md) ·
+[Moving the observer](notes/seeing/observer-motion.md) ·
+[Intersections and occlusion](notes/seeing/intersections-and-occlusion.md) ·
+[Quotient teleportation](notes/seeing/quotients-and-teleportation.md) ·
+[Lighting and optical assumptions](notes/seeing/lighting-and-optics.md) ·
+[Distance and acceleration](notes/seeing/distance-marching-acceleration.md) ·
+[Caching and reprojection](notes/seeing/frame-caching-reprojection.md).
+
+## The eight geometries
+
+| Geometry | Study |
 | --- | --- |
-| Point-indexed tangent spaces and frames | [base points](notes/foundations/basepoints.md) |
-| Christoffel symbols and chart changes | [Christoffel coefficients](notes/foundations/christoffel-symbols.md) |
-| Geodesics, transport, curvature | [geodesics](notes/foundations/geodesics.md) |
-| Observer and viewing rays | [observer frame](notes/seeing/observer-frame.md) |
-| Quotient worlds | [identified boundaries](notes/seeing/quotients.md) |
-| All eight geometries | [geometry map](notes/thurston/README.md) |
-| Pencil-and-paper checks | [worked examples](notes/worked/README.md) |
+| $\mathbb E^3$ | [Euclidean reference](notes/thurston/euclidean.md) |
+| $S^3$ | [Round sphere](notes/thurston/spherical.md) |
+| $\mathbb H^3$ | [Hyperbolic space](notes/thurston/hyperbolic.md) |
+| $S^2\times\mathbb R$ | [Spherical product](notes/thurston/s2-times-r.md) |
+| $\mathbb H^2\times\mathbb R$ | [Hyperbolic product](notes/thurston/h2-times-r.md) |
+| Nil | [Heisenberg geometry](notes/thurston/nil.md) |
+| Sol | [Anisotropic solvable geometry](notes/thurston/sol.md) |
+| $\widetilde{\mathrm{SL}_2(\mathbb R)}$ | [Universal cover](notes/thurston/sl2-cover.md) |
+
+## Worked calculations
+
+[Flat polar coordinates](notes/worked/polar-plane.md) ·
+[Sphere, great circle and holonomy](notes/worked/sphere-loop.md) ·
+[Upper half-plane geodesic and transport](notes/worked/hyperbolic-half-plane.md) ·
+[Flat three-torus boundary crossing](notes/worked/flat-3-torus-quotient.md) ·
+[Lie-group curvature and exact rays](notes/worked/lie-group-curvature.md).
+
+## Source studies
+
+[Main paper](notes/sources/ray-marching-thurston.md) ·
+[Scott](notes/sources/scott-geometries.md) ·
+[Novello et al.](notes/sources/novello-eight.md) ·
+[Functional Differential Geometry](notes/sources/functional-differential-geometry.md) ·
+[Computational bibliography](notes/sources/computational-bibliography.md) ·
+[Source status, versions, and licenses](notes/sources/provenance-and-licenses.md).
+
+## Source-code surveys
+
+[Thurston ray marcher](notes/code-survey/thurston-raymarcher.md) ·
+[Mathlib](notes/code-survey/lean-mathlib.md) ·
+[Emmy / SICMUtils](notes/code-survey/emmy-sicmutils.md) ·
+[geometry-central](notes/code-survey/geometry-central.md) ·
+[JuliaManifolds](notes/code-survey/juliamanifolds.md) ·
+[DiGeo](notes/code-survey/digeo.md) ·
+[DifferentialGeometry.lean fork](notes/code-survey/differential-geometry-lean-fork.md) ·
+[Egison](notes/code-survey/egison.md) ·
+[DiscreteExteriorCalculus.jl](notes/code-survey/discrete-exterior-calculus.md) ·
+[Nearby topology and geometry](notes/code-survey/related-topology.md).
+
+## Architectural notes
+
+[Point-indexed types](notes/architecture/dependent-types.md) ·
+[Mathematical and numerical boundaries](notes/architecture/solver-boundaries.md) ·
+[Verification contracts](notes/architecture/verification-contract.md) ·
+[Reuse and licensing](notes/architecture/reuse-and-licensing.md).
+
+## Evidence policy
+
+Each note distinguishes **inspected source**, **metadata-only**, **independently derived**, and **unverified** assertions; coordinates and signs belong to the local note and cannot silently be transferred between models. Source-code file links identify pinned snapshots, not promises of binary compatibility. This is original explanatory documentation, not vendored code or a copy of published material.
+
+**Scope:** One-off research and exposition. The [verification record](notes/architecture/verification-contract.md) distinguishes exact calculations and link/source checks from unrun numerical integrators or any independent acceptance process. This repository selects no runtime dependencies or rendering engine.

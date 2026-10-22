@@ -1,0 +1,124 @@
+module Eye.Visibility
+
+import Eye.Geometry
+
+%unbound_implicits off
+
+-- Events compete in ONE affine geodesic parameter: object, paired face,
+-- chart exit. The event point, incoming direction, surface normal and the
+-- transported frame ALL inhabit the same tangent fiber.
+
+public export
+record GeodesicHit (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor HitAlongRay
+  parameter : scalar
+  hit_point : Point geometry scalar
+  arriving_tangent : Tangent hit_point
+  normal_covector : Cotangent hit_point
+  arriving_right : Tangent hit_point
+  arriving_up : Tangent hit_point
+  arriving_forward : Tangent hit_point
+
+public export
+frame_at_hit : {geometry : ThurstonGeometry} → {scalar : Type} →
+               GeodesicHit geometry scalar → FramedRay geometry scalar
+frame_at_hit hit =
+  RayWithFrame (hit_point hit)
+    (arriving_tangent hit)
+    (arriving_right hit)
+    (arriving_up hit)
+    (arriving_forward hit)
+
+public export
+data EventCandidate (geometry : ThurstonGeometry) (scalar : Type)
+  = SceneSurface Number (GeodesicHit geometry scalar)
+  | FundamentalFace Number (GeodesicHit geometry scalar)
+  | CoordinateChartExit scalar
+
+public export
+event_parameter : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  EventCandidate geometry scalar → scalar
+event_parameter (SceneSurface _ hit) = parameter hit
+event_parameter (FundamentalFace _ hit) = parameter hit
+event_parameter (CoordinateChartExit length) = length
+
+-- The provider promises that CompleteBefore enumerates ALL events strictly
+-- inside (0, horizon); otherwise it must return UnknownBefore. In particular
+-- a signed-distance guess does not justify a complete-event assertion.
+public export
+data EventWindow (geometry : ThurstonGeometry) (scalar : Type)
+  = UnknownBefore scalar
+  | CompleteBefore scalar (List (EventCandidate geometry scalar))
+
+public export
+data FirstEvent (geometry : ThurstonGeometry) (scalar : Type)
+  = MustRefine scalar
+  | ClearBefore scalar
+  | Earliest (EventCandidate geometry scalar)
+
+private
+data Nearest (geometry : ThurstonGeometry) (scalar : Type)
+  = NoCandidate
+  | UniqueCandidate (EventCandidate geometry scalar)
+  | CoincidentCandidates scalar
+
+private
+candidate_valid : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ScalarOperations scalar → scalar →
+                  EventCandidate geometry scalar → Bool
+candidate_valid arithmetic horizon candidate =
+  let length = event_parameter candidate
+  in scalar_finite arithmetic length &&
+     scalar_less arithmetic (scalar_zero arithmetic) length &&
+     scalar_less arithmetic length horizon
+
+private
+candidates_valid : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   ScalarOperations scalar → scalar →
+                   List (EventCandidate geometry scalar) → Bool
+candidates_valid arithmetic horizon [] = True
+candidates_valid arithmetic horizon (candidate :: rest) =
+  candidate_valid arithmetic horizon candidate &&
+  candidates_valid arithmetic horizon rest
+
+private
+choose_nearest : {geometry : ThurstonGeometry} → {scalar : Type} →
+                 ScalarOperations scalar →
+                 List (EventCandidate geometry scalar) →
+                 Nearest geometry scalar → Nearest geometry scalar
+choose_nearest arithmetic [] current = current
+choose_nearest arithmetic (candidate :: rest) current =
+  let candidate_length = event_parameter candidate
+      next = case current of
+        NoCandidate => UniqueCandidate candidate
+        UniqueCandidate chosen =>
+          let chosen_length = event_parameter chosen
+          in if scalar_less arithmetic candidate_length chosen_length
+               then UniqueCandidate candidate
+               else if scalar_less arithmetic chosen_length candidate_length
+                 then UniqueCandidate chosen
+                 else CoincidentCandidates chosen_length
+        CoincidentCandidates tied_length =>
+          if scalar_less arithmetic candidate_length tied_length
+            then UniqueCandidate candidate
+            else CoincidentCandidates tied_length
+  in choose_nearest arithmetic rest next
+
+-- Ties/refinement are first-class: never pick an arbitrary face over an
+-- equal-parameter surface. A malformed purportedly complete window fails
+-- closed rather than dropping its invalid candidates.
+public export
+first_event : {geometry : ThurstonGeometry} → {scalar : Type} →
+              ScalarOperations scalar →
+              EventWindow geometry scalar →
+              FirstEvent geometry scalar
+first_event arithmetic (UnknownBefore horizon) = MustRefine horizon
+first_event arithmetic (CompleteBefore horizon candidates) =
+  if not (scalar_finite arithmetic horizon &&
+          scalar_less arithmetic (scalar_zero arithmetic) horizon &&
+          candidates_valid arithmetic horizon candidates)
+    then MustRefine horizon
+    else case choose_nearest arithmetic candidates NoCandidate of
+      NoCandidate => ClearBefore horizon
+      UniqueCandidate candidate => Earliest candidate
+      CoincidentCandidates length => MustRefine length
