@@ -1,0 +1,15 @@
+# Peter Scott — The Geometries of 3-Manifolds
+
+**Status: publisher metadata and original scanned article inspected at pp. 401, 441 and 467; section/page listing checked. Detailed results outside these passages are not represented as fully verified.**
+
+Peter Scott, *The Geometries of 3-Manifolds*, *Bulletin of the London Mathematical Society* **15**(5), September 1983, 401–487. [Publisher record and DOI](https://doi.org/10.1112/blms/15.5.401). The publisher's bibliographic record confirms year, volume, issue, and page span. An [archived scan of the original article](https://sschleimer.warwick.ac.uk/Teach/2021_3MFDS/References/1983the_geometries_of_three-manifolds.pdf) has a verified table of contents: §4 starts on p. 441, with $E^3$ p. 443, $H^3$ p. 448, $S^3$ p. 449, $S^2\times\mathbb R$ p. 457, $H^2\times\mathbb R$ p. 459, $\widetilde{SL_2(\mathbb R)}$ p. 462, Nil p. 467, and Sol p. 470; §5 classification starts p. 473. The original p. 441 lists, in Table 4.1, the geometric possibilities for Seifert bundles **with closed total space** indexed by base orbifold Euler characteristic $\chi$ and bundle Euler invariant $e$: for $e=0$, positive/zero/negative $\chi$ give respectively $S^2\times\mathbb R$, $E^3$, $H^2\times\mathbb R$; for $e\ne0$, they give respectively $S^3$, Nil, and $\widetilde{SL_2(\mathbb R)}$. This table is not a classification of every possible 3-manifold or a list of Sol examples. The scanned p. 467 identifies Nil with the 3D upper-triangular Heisenberg group and records its central-fiber exact sequence.
+
+Scott's classification question differs from the rendering question. A **Thurston model geometry** is a simply connected homogeneous Riemannian 3-space satisfying the maximality condition appropriate to the classification. A *geometric 3-manifold* can arise as a quotient $X/\Gamma$ by a suitable discrete isometry group. This decomposition tells us which universal-cover spaces require a study; it does not calculate image rays, object intersection, or illumination. In particular, locally homogeneous geometry and global identifications are distinct data.
+
+## Research extraction checklist
+
+For each $X$: describe $G=\mathrm{Isom}(X)$, the stabilizer $K$, connectedness and simply connected cover, sectional-curvature behavior, and possible discrete subgroups. Separate a named Lie group from a particular left-invariant **metric** on that group. A covering map may be a local isometry but does not globally identify all points. For $S^2\times\mathbb R$ and $\mathbb H^2\times\mathbb R$, the product geodesic separates into factors; Nil, Sol, and the universal cover of $SL_2(\mathbb R)$ need more care.
+
+Coulon et al. [§§6–11](https://arxiv.org/html/2010.15801) provide the checked geometry-to-ray connection. Do not ascribe the rendering algorithms to Scott.
+
+**To verify before claiming a critical Scott theorem:** inspect the original article's page and the published errata, record the page and exact hypothesis. We do not guess theorem numbers or silently use an uncited secondary paraphrase as a textual quotation.
