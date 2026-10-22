@@ -15,8 +15,8 @@
 | [DiscreteExteriorCalculus.jl](https://github.com/rigetti/DiscreteExteriorCalculus.jl) | 7f0dd7eeabe1d4efa56def50fc069dc9c00a0d7e | BSD-3-Clause | source path inventory and README inspected |
 | [Walnut–Burgundy/DiGeo](https://github.com/walnut-burgundy/DiGeo) | 5557253bd33121ea40060f601ca0a27a29b47683 | BSD-3-Clause | fork directory listing and license inspected |
 | [Walnut–Burgundy/differential-geometry](https://github.com/walnut-burgundy/differential-geometry) | fd2f07fba4c6c102ba626c59153ad98da8f0d442 | Apache-2.0 | Lean directory tree and license inspected |
-| [Scott (1983)](https://doi.org/10.1112/blms/15.5.401) | print Vol. 15(5), pp. 401–487 | copyright retained by publisher | metadata/table of contents only |
-| [Novello et al.](https://arxiv.org/abs/2005.12772) | arXiv:2005.12772 | verify final reuse rights independently | arXiv HTML inspected |
+| [Scott (1983)](https://doi.org/10.1112/blms/15.5.401) | print Vol. 15(5), pp. 401–487 | copyright retained by publisher | original scan inspected pp. 401, 441, 467; table of contents for §4 pages |
+| [Novello et al.](https://arxiv.org/abs/2005.12772) | arXiv:2005.12772v4 (14 Sep 2021) | arXiv nonexclusive distribution license | arXiv HTML v4 inspected |
 | [Functional Differential Geometry](https://mitpress.mit.edu/9780262019347/functional-differential-geometry/) | 2013 edition | copyrighted book, do not vendor | bibliographic pointer, not entire book |
 
 ## Status vocabulary

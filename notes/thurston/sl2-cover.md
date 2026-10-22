@@ -14,3 +14,5 @@ This chosen unit-scale bundle metric is a representative of $\widetilde{SL_2\mat
 **Isometries, quotients, and visibility.** Left group translations act isometrically in an appropriate group model; the fiber lift records winding that would be lost by treating a base rotation modulo $2\pi$. The paper's software stores redundant $(g,w)\in SL_2(\mathbb R)\times\mathbb R$ data to retain the lifted coordinate (§10.1). Quotient deck data must act consistently on both base and lift.
 
 **Numerical limits.** Long winding and branch/crossing errors, multivalued point-to-point geodesics, and the complexity of distance estimates and lighting. The published implementation includes separate point-direction and area-density work; no numerical equivalence to this locally normalized coframe has been tested here.
+
+**Exact curvature and ray cross-checks:** [Lie-frame and coordinate verification for SL2](../worked/lie-group-curvature.md).

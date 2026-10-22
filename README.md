@@ -53,7 +53,8 @@ Mathematical state: $\mathrm{RayState}=\sum_{x:M}T_xM$. A ray is an initial-valu
 [Flat polar coordinates](notes/worked/polar-plane.md) ·
 [Sphere, great circle and holonomy](notes/worked/sphere-loop.md) ·
 [Upper half-plane geodesic and transport](notes/worked/hyperbolic-half-plane.md) ·
-[Flat three-torus boundary crossing](notes/worked/flat-3-torus-quotient.md).
+[Flat three-torus boundary crossing](notes/worked/flat-3-torus-quotient.md) ·
+[Lie-group curvature and exact rays](notes/worked/lie-group-curvature.md).
 
 ## Source studies
 
@@ -88,4 +89,4 @@ Mathematical state: $\mathrm{RayState}=\sum_{x:M}T_xM$. A ray is an initial-valu
 
 Each note distinguishes **inspected source**, **metadata-only**, **independently derived**, and **unverified** assertions; coordinates and signs belong to the local note and cannot silently be transferred between models. Source-code file links identify pinned snapshots, not promises of binary compatibility. This is original explanatory documentation, not vendored code or a copy of published material.
 
-**Status:** Research branch authoring; no claim of Flexible Pipes admission, independent AI-CI acceptance, numerical qualification, merge, or shipped renderer. See [verification contracts](notes/architecture/verification-contract.md).
+**Scope:** One-off research and exposition. The [verification record](notes/architecture/verification-contract.md) distinguishes exact calculations and link/source checks from unrun numerical integrators or any independent acceptance process. This repository selects no runtime dependencies or rendering engine.

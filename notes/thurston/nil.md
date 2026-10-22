@@ -13,3 +13,5 @@ This is equivalent under a coordinate change to the rotation-invariant metric $d
 **Isometries, quotients, observations.** Left multiplication is isometric; the rotation-invariant model makes an additional $O(2)$ stabilizer visible. Integer Heisenberg lattices give compact quotients; an $x$-shift can also shear the $z$ coordinate under identification. A ray starting with $(u_1,u_2,u_3)=(1,0,c)$ traces a rotating *horizontal* velocity when $c\ne0$, even though the speed remains constant. The vertical direction changes the horizontal appearance.
 
 **Numerical limits.** Multiple geodesics and nonlinear ball distances make Euclidean signed distance marching unsafe without proven underestimates. Verify the group law and frame-to-coordinate conversion at every quotient boundary. The paper details half-space and ball bounds in §9.4–9.9.
+
+**Exact curvature and ray cross-checks:** [Lie-frame and coordinate verification for Nil](../worked/lie-group-curvature.md).
