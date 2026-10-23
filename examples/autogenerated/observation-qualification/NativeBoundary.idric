@@ -1,0 +1,41 @@
+module NativeBoundary
+
+import Eye.Geometry
+import Eye.Models
+import Eye.Visibility
+import Eye.Quotient
+import Eye.Trace
+import Eye.FlatTorus
+import Eye.Interop.Scalars
+import Eye.Interop.Packet
+
+private
+frame_handoff : (precision : ScalarPrecision) → FramedRay Euclidean3 (Scalar precision) → Bool
+frame_handoff precision ray = case encode_frame ray of
+  Left _ ⇒ False
+  Right bytes ⇒ case decode_frame Euclidean3 precision bytes of
+    Left _ ⇒ False
+    Right restored ⇒ case coordinates_at (frame_location restored) of
+      XYZ x y z ⇒ x ≟ 0.25 && y ≟ 0.25 && z ≟ 0.5
+
+-- A concrete backend requirement using the real Eye trace, not handwritten
+-- backend rows or a reference implementation. The foreign scalar operations
+-- prevent replacing this runtime calculation with a compile-time picture.
+private
+check_torus : (precision : ScalarPrecision) → Bool
+check_torus precision =
+  let arithmetic = the (ScalarOperations (Scalar precision)) numeric_operations
+      model = model_for Euclidean3 arithmetic
+      starting = RayWithFrame (Located Cartesian (the (Coordinates (Scalar precision)) (XYZ 0.75 0.25 0.5)))
+        (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+      services = torus_services arithmetic (\horizon, _ ⇒ CompleteBefore horizon [])
+  in case trace_bounded 32 4 model services 0.25 0.5 0.5 (start_lift starting) of
+    TravelLimitReached elapsed finished ⇒
+      case coordinates_at (frame_location (ray_and_frame finished)) of
+        XYZ x y z ⇒ elapsed ≟ 0.5 && x ≟ 0.25 && y ≟ 0.25 && z ≟ 0.5 &&
+          length (crossed_deck_generators finished) ≟ 1 && frame_handoff precision (ray_and_frame finished)
+    _ ⇒ False
+
+main : IO ()
+main = putChar (if check_torus SinglePrecision && check_torus SignedE4M3 then 'Y' else 'N')

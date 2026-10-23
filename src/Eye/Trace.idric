@@ -13,14 +13,16 @@ import Eye.Quotient
 -- The program refuses to guess what to do with a chart exit or coincident hit.
 
 public export
-data TraceResult (geometry : ThurstonGeometry) (scalar : Type)
-  = NeedRefinement scalar
-  | CannotAdvance StepRefusal
-  | Continued (LiftedRay geometry scalar) (StepDiagnostics scalar)
-  | StruckSurface Number (GeodesicHit geometry scalar)
-  | CrossedPairedFace (LiftedRay geometry scalar)
-  | MissingFaceIsometry Number
-  | NeedsChartTransition scalar
+data TraceResult : ThurstonGeometry → Type → Type where
+  NeedRefinement : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → TraceResult geometry scalar
+  CannotAdvance : {geometry : ThurstonGeometry} → {scalar : Type} → StepRefusal → TraceResult geometry scalar
+  Continued : {geometry : ThurstonGeometry} → {scalar : Type} → (LiftedRay geometry scalar) → (StepDiagnostics scalar) → TraceResult geometry scalar
+  StruckSurface : {geometry : ThurstonGeometry} → {scalar : Type} → Number → (GeodesicHit geometry scalar) → TraceResult geometry scalar
+  CrossedPairedFace : {geometry : ThurstonGeometry} → {scalar : Type} → (LiftedRay geometry scalar) → TraceResult geometry scalar
+  NeedsFaceBatch : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → (List Number) → (FramedRay geometry scalar) → TraceResult geometry scalar
+  MissingFaceIsometry : {geometry : ThurstonGeometry} → {scalar : Type} → Number → TraceResult geometry scalar
+  NeedsChartTransition : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → TraceResult geometry scalar
+  CannotResolveEvents : {geometry : ThurstonGeometry} → {scalar : Type} → EventWindowFailure → TraceResult geometry scalar
 
 public export
 trace_one_window : {geometry : ThurstonGeometry} → {scalar : Type} →
@@ -31,7 +33,9 @@ trace_one_window : {geometry : ThurstonGeometry} → {scalar : Type} →
                    EventWindow geometry scalar →
                    TraceResult geometry scalar
 trace_one_window model tolerance action_for_face lifted window =
-  case first_event (numbers model) window of
+  if not (framed_ray_valid model (ray_and_frame lifted)) then CannotAdvance InvalidStepOrChart
+  else case first_event (numbers model) window of
+    InvalidEvents reason => CannotResolveEvents reason
     MustRefine horizon => NeedRefinement horizon
     ClearBefore horizon =>
       case advance_checked model horizon tolerance (ray_and_frame lifted) of
@@ -41,7 +45,13 @@ trace_one_window model tolerance action_for_face lifted window =
             (OnUniversalCover finished (crossed_deck_generators lifted))
             diagnostics
     Earliest (SceneSurface label hit) =>
-      StruckSurface label hit
+      if framed_ray_valid model (frame_at_hit hit) then StruckSurface label hit
+      else CannotAdvance InvalidStepOrChart
+    Earliest (BracketedSurface label _ _ hit) =>
+      if framed_ray_valid model (frame_at_hit hit) then StruckSurface label hit
+      else CannotAdvance InvalidStepOrChart
+    Earliest (FundamentalFaces length labels reached) =>
+      NeedsFaceBatch length labels reached
     Earliest (FundamentalFace label hit) =>
       case action_for_face label of
         Nothing => MissingFaceIsometry label
@@ -52,3 +62,141 @@ trace_one_window model tolerance action_for_face lifted window =
                 (crossed_deck_generators lifted)))
     Earliest (CoordinateChartExit length) =>
       NeedsChartTransition length
+
+public export
+data JourneyFailure
+  = WindowBudgetExhausted
+  | RefinementBudgetExhausted
+  | TravelArithmeticFailed
+  | ChartTransitionUnavailable
+  | FaceBatchUnresolved
+  | FaceActionUnavailable Number
+  | PropagationFailed StepRefusal
+  | EventProviderFailed EventWindowFailure
+
+public export
+data JourneyResult : ThurstonGeometry → Type → Type where
+  TravelLimitReached : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → (LiftedRay geometry scalar) → JourneyResult geometry scalar
+  JourneyHit : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → Number → (GeodesicHit geometry scalar) → JourneyResult geometry scalar
+  JourneyStopped : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → JourneyFailure → (LiftedRay geometry scalar) → JourneyResult geometry scalar
+
+public export
+record TraceServices (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor TraceWith
+  events_for_window : scalar → LiftedRay geometry scalar → EventWindow geometry scalar
+  face_action : Number → Maybe (DeckAction geometry scalar)
+  resolve_face_batch : List Number → LiftedRay geometry scalar → Maybe (LiftedRay geometry scalar)
+  transition_chart : FramedRay geometry scalar → Maybe (FramedRay geometry scalar)
+
+private
+smaller : {scalar : Type} → ScalarOperations scalar → scalar → scalar → scalar
+smaller arithmetic left right = if scalar_less arithmetic left right then left else right
+
+private
+requested_window : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   ScalarOperations scalar → scalar → EventWindow geometry scalar → EventWindow geometry scalar
+requested_window arithmetic expected window@(CompleteBefore supplied _) =
+  if scalar_less arithmetic expected supplied || scalar_less arithmetic supplied expected
+    then InvalidWindow MismatchedHorizons else window
+requested_window arithmetic expected window = window
+
+private
+consumed_parameter : {geometry : ThurstonGeometry} → {scalar : Type} →
+                     ScalarOperations scalar → scalar → EventWindow geometry scalar → scalar
+consumed_parameter arithmetic horizon window =
+  case first_event arithmetic window of
+    Earliest event => event_parameter event
+    _ => horizon
+
+-- Each recursive call consumes one window budget, including zero-time face
+-- and chart events. Refinement has its own budget. No failure becomes clear.
+private
+journey_loop : {geometry : ThurstonGeometry} → {scalar : Type} →
+               Number → Number → Number → MetricConnection geometry scalar →
+               TraceServices geometry scalar → scalar → scalar → scalar → scalar →
+               LiftedRay geometry scalar → JourneyResult geometry scalar
+journey_loop windows refinements original_refinements model services tolerance remaining elapsed requested lifted =
+  let arithmetic = numbers model
+      zero = scalar_zero arithmetic
+      horizon = smaller arithmetic requested remaining
+  in if not (scalar_finite arithmetic remaining && scalar_finite arithmetic elapsed &&
+             scalar_finite arithmetic requested && not (scalar_less arithmetic remaining zero))
+       then JourneyStopped elapsed TravelArithmeticFailed lifted
+       else if not (scalar_less arithmetic zero remaining)
+         then TravelLimitReached elapsed lifted
+         else case windows of
+           Z => JourneyStopped elapsed WindowBudgetExhausted lifted
+           S later_windows =>
+             if not (scalar_less arithmetic zero horizon)
+               then JourneyStopped elapsed TravelArithmeticFailed lifted
+               else
+                 let window = requested_window arithmetic horizon (events_for_window services horizon lifted)
+                     consumed = consumed_parameter arithmetic horizon window
+                     result = trace_one_window model tolerance (face_action services) lifted window
+                     continue : LiftedRay geometry scalar → JourneyResult geometry scalar
+                     continue = \next =>
+                       let left = subtract_scalars arithmetic remaining consumed
+                           accumulated = scalar_add arithmetic elapsed consumed
+                           positive = scalar_less arithmetic zero consumed
+                       in if not (framed_ray_valid model (ray_and_frame next))
+                            then JourneyStopped elapsed (PropagationFailed InvalidStepOrChart) lifted
+                            else if not (scalar_finite arithmetic consumed &&
+                                  not (scalar_less arithmetic consumed zero) &&
+                                  not (scalar_less arithmetic remaining consumed) &&
+                                  scalar_finite arithmetic left && scalar_finite arithmetic accumulated &&
+                                  (not positive || (scalar_less arithmetic left remaining &&
+                                                    scalar_less arithmetic elapsed accumulated)))
+                            then JourneyStopped elapsed TravelArithmeticFailed lifted
+                            else journey_loop later_windows original_refinements original_refinements
+                              model services tolerance left accumulated requested next
+                     refine : JourneyResult geometry scalar
+                     refine = case refinements of
+                       Z => JourneyStopped elapsed RefinementBudgetExhausted lifted
+                       S later_refinements =>
+                         let half = scalar_divide arithmetic horizon (scalar_two arithmetic)
+                         in if not (scalar_less arithmetic zero half && scalar_less arithmetic half horizon)
+                              then JourneyStopped elapsed TravelArithmeticFailed lifted
+                              else journey_loop later_windows later_refinements original_refinements
+                                model services tolerance remaining elapsed half lifted
+                 in case result of
+                   NeedRefinement _ => refine
+                   CannotAdvance RefinementRequired => refine
+                   CannotAdvance SpeedOrFrameDrift => refine
+                   CannotAdvance reason => JourneyStopped elapsed (PropagationFailed reason) lifted
+                   CannotResolveEvents reason => JourneyStopped elapsed (EventProviderFailed reason) lifted
+                   Continued next _ => continue next
+                   CrossedPairedFace next => continue next
+                   MissingFaceIsometry label => JourneyStopped elapsed (FaceActionUnavailable label) lifted
+                   StruckSurface label hit =>
+                     let accumulated = scalar_add arithmetic elapsed (parameter hit)
+                         positive = scalar_less arithmetic zero (parameter hit)
+                     in if scalar_finite arithmetic accumulated &&
+                           (not positive || scalar_less arithmetic elapsed accumulated)
+                          then JourneyHit accumulated label hit
+                        else JourneyStopped elapsed TravelArithmeticFailed lifted
+                   NeedsFaceBatch _ labels reached =>
+                     case resolve_face_batch services labels
+                            (OnUniversalCover reached (crossed_deck_generators lifted)) of
+                       Nothing => JourneyStopped elapsed FaceBatchUnresolved lifted
+                       Just next => continue next
+                   NeedsChartTransition length =>
+                     let current = ray_and_frame lifted
+                         at_exit = if scalar_less arithmetic zero length
+                           then case advance_checked model length tolerance current of
+                             StepAdvanced next _ => Just next
+                             _ => Nothing
+                           else Just current
+                     in case at_exit of
+                       Nothing => refine
+                       Just reached => case transition_chart services reached of
+                         Nothing => JourneyStopped elapsed ChartTransitionUnavailable lifted
+                         Just next => continue (OnUniversalCover next (crossed_deck_generators lifted))
+
+export
+trace_bounded : {geometry : ThurstonGeometry} → {scalar : Type} →
+                Number → Number → MetricConnection geometry scalar →
+                TraceServices geometry scalar → scalar → scalar → scalar →
+                LiftedRay geometry scalar → JourneyResult geometry scalar
+trace_bounded windows refinements model services tolerance travel maximum_step lifted =
+  journey_loop windows refinements refinements model services tolerance travel
+    (scalar_zero (numbers model)) maximum_step lifted

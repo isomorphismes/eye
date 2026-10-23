@@ -1,0 +1,87 @@
+module Eye.Companions.Regina
+
+-- Concrete incidence import from Example<3>::threeTorus(), example3.cpp,
+-- Regina e3a5c7c0e0581706d9e5531b750160b322489950, GPL-2.0-or-later.
+-- These six tetrahedra do NOT supply Eye's metric or any deck isometry.
+public export
+data TetrahedronVertex = Vertex0 | Vertex1 | Vertex2 | Vertex3
+
+public export
+record VertexPermutation where
+  constructor PermuteVertices
+  image0 : TetrahedronVertex
+  image1 : TetrahedronVertex
+  image2 : TetrahedronVertex
+  image3 : TetrahedronVertex
+
+export
+Eq TetrahedronVertex where
+  Vertex0 ≟ Vertex0 = True
+  Vertex1 ≟ Vertex1 = True
+  Vertex2 ≟ Vertex2 = True
+  Vertex3 ≟ Vertex3 = True
+  _ ≟ _ = False
+
+public export
+record FacePairing where
+  constructor GlueFace
+  source_cell : Number
+  opposite_vertex : TetrahedronVertex
+  target_cell : Number
+  vertex_map : VertexPermutation
+
+private
+apply_permutation : VertexPermutation → TetrahedronVertex → TetrahedronVertex
+apply_permutation permutation Vertex0 = image0 permutation
+apply_permutation permutation Vertex1 = image1 permutation
+apply_permutation permutation Vertex2 = image2 permutation
+apply_permutation permutation Vertex3 = image3 permutation
+
+private
+vertices : List TetrahedronVertex
+vertices = [Vertex0, Vertex1, Vertex2, Vertex3]
+
+private
+valid_permutation : VertexPermutation → Bool
+valid_permutation permutation = all (\vertex ⇒
+  length (filter (\source ⇒ apply_permutation permutation source ≟ vertex) vertices) ≟ 1) vertices
+
+export
+three_torus_pairings : List FacePairing
+three_torus_pairings =
+  [ GlueFace 0 Vertex0 1 (PermuteVertices Vertex0 Vertex1 Vertex3 Vertex2)
+  , GlueFace 0 Vertex1 2 (PermuteVertices Vertex0 Vertex1 Vertex3 Vertex2)
+  , GlueFace 0 Vertex2 3 (PermuteVertices Vertex0 Vertex1 Vertex3 Vertex2)
+  , GlueFace 0 Vertex3 4 (PermuteVertices Vertex0 Vertex1 Vertex3 Vertex2)
+  , GlueFace 1 Vertex1 5 (PermuteVertices Vertex0 Vertex1 Vertex3 Vertex2)
+  , GlueFace 1 Vertex2 3 (PermuteVertices Vertex2 Vertex3 Vertex1 Vertex0)
+  , GlueFace 1 Vertex3 4 (PermuteVertices Vertex3 Vertex2 Vertex0 Vertex1)
+  , GlueFace 2 Vertex0 5 (PermuteVertices Vertex0 Vertex1 Vertex3 Vertex2)
+  , GlueFace 2 Vertex2 3 (PermuteVertices Vertex3 Vertex2 Vertex0 Vertex1)
+  , GlueFace 2 Vertex3 4 (PermuteVertices Vertex2 Vertex3 Vertex1 Vertex0)
+  , GlueFace 3 Vertex2 5 (PermuteVertices Vertex1 Vertex0 Vertex2 Vertex3)
+  , GlueFace 4 Vertex3 5 (PermuteVertices Vertex1 Vertex0 Vertex2 Vertex3)
+  ]
+
+private
+uses_face : Number → TetrahedronVertex → FacePairing → Bool
+uses_face cell vertex pairing =
+  (source_cell pairing ≟ cell && opposite_vertex pairing ≟ vertex) ||
+  (target_cell pairing ≟ cell && apply_permutation (vertex_map pairing) (opposite_vertex pairing) ≟ vertex)
+
+-- Incidence lookup serves topology consumers. It intentionally returns no
+-- Point, Tangent, MetricConnection or DeckAction.
+export
+paired_cell : List FacePairing → Number → TetrahedronVertex → Maybe Number
+paired_cell [] cell vertex = Nothing
+paired_cell (pairing :: rest) cell vertex =
+  if uses_face cell vertex pairing then
+    Just (if source_cell pairing ≟ cell then target_cell pairing else source_cell pairing)
+  else paired_cell rest cell vertex
+
+export
+validate_closed_six_cell_incidence : List FacePairing → Bool
+validate_closed_six_cell_incidence pairings =
+  length pairings ≟ 12 &&
+  all (\pairing ⇒ source_cell pairing < 6 && target_cell pairing < 6 && valid_permutation (vertex_map pairing)) pairings &&
+  all (\cell ⇒ all (\vertex ⇒ length (filter (uses_face cell vertex) pairings) ≟ 1) vertices) [0..5]

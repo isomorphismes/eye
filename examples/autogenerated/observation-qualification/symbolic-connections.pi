@@ -1,0 +1,54 @@
+"""Reproduce the eight local symbolic Levi-Civita calculations.
+
+SymPy is a foreign symbolic algebra library, outside the Idriç compiler.
+The compiled Idriç IndependentConnection test separately checks the actual
+Float32 functions, joining these written formulas to executable Eye code.
+"""
+import sys
+from builtins import RuntimeError
+from pathlib import Path
+import sympy
+import mpmath
+
+argv ∈ list[str] ← sys.argv
+symbolic_version ∈ str ← sympy.__version__
+precision_version ∈ str ← mpmath.__version__
+if symbolic_version != "1.14.0" or precision_version != "1.3.0":
+    raise RuntimeError("use the pinned SymPy 1.14.0 / mpmath 1.3.0 reference libraries")
+source ∈ str ← Path(__file__).with_name("connection-inputs.tsv").read_text()
+coordinates ∈ list[object] ← [sympy.Symbol("x", real=True), sympy.Symbol("y", positive=True), sympy.Symbol("z", positive=True)]
+left ∈ list[object] ← [sympy.Symbol("vx"), sympy.Symbol("vy"), sympy.Symbol("vz")]
+right ∈ list[object] ← [sympy.Symbol("wx"), sympy.Symbol("wy"), sympy.Symbol("wz")]
+names ∈ dict[str, object] ← {"x": coordinates[0], "y": coordinates[1], "z": coordinates[2], "vx": left[0], "vy": left[1], "vz": left[2], "wx": right[0], "wy": right[1], "wz": right[2], "Matrix": sympy.Matrix, "eye": sympy.eye, "exp": sympy.exp}
+corrupt ∈ bool ← len(argv) > 1 and argv[1] == "--corrupt-nil"
+count ∈ int ← 0
+lines ∈ list[str] ← source.splitlines()
+for line in lines:
+    fields ∈ list[str] ← line.split("\t")
+    name ∈ str ← fields[0]
+    metric ∈ object ← sympy.sympify(fields[1], locals=names)
+    inverse ∈ object ← metric.inv()
+    expected ∈ list[object] ← sympy.sympify(fields[2], locals=names)
+    for output in range(3):
+        contraction ∈ object ← sympy.Integer(0)
+        for contracted in range(3):
+            for first in range(3):
+                for second in range(3):
+                    first_derivative ∈ object ← sympy.diff(metric.__getitem__((contracted, second)), coordinates[first])
+                    second_derivative ∈ object ← sympy.diff(metric.__getitem__((contracted, first)), coordinates[second])
+                    third_derivative ∈ object ← sympy.diff(metric.__getitem__((first, second)), coordinates[contracted])
+                    term ∈ object ← first_derivative.__add__(second_derivative).__sub__(third_derivative)
+                    term ← term.__mul__(inverse.__getitem__((output, contracted))).__mul__(left[first]).__mul__(right[second]).__truediv__(2)
+                    contraction ← contraction.__add__(term)
+        wanted ∈ object ← sympy.sympify(expected[output])
+        if corrupt and name == "Nil" and output == 0:
+            wanted ← wanted.__add__(1)
+        difference ∈ object ← sympy.simplify(contraction.__sub__(wanted))
+        same ∈ bool ← difference.__eq__(0)
+        if not same:
+            raise RuntimeError("FAIL symbolic connection " + name + " component " + str(output) + ": " + str(difference))
+    print("PASS symbolic Levi-Civita " + name)
+    count ← count + 1
+if count != 8:
+    raise RuntimeError("expected all eight metrics")
+print("PASS eight symbolic contractions")

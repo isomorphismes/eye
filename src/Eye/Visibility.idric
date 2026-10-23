@@ -30,37 +30,83 @@ frame_at_hit hit =
     (arriving_forward hit)
 
 public export
-data EventCandidate (geometry : ThurstonGeometry) (scalar : Type)
-  = SceneSurface Number (GeodesicHit geometry scalar)
-  | FundamentalFace Number (GeodesicHit geometry scalar)
-  | CoordinateChartExit scalar
+data EventCandidate : ThurstonGeometry → Type → Type where
+  SceneSurface : {geometry : ThurstonGeometry} → {scalar : Type} → Number → (GeodesicHit geometry scalar) → EventCandidate geometry scalar
+  BracketedSurface : {geometry : ThurstonGeometry} → {scalar : Type} → Number → scalar → scalar → (GeodesicHit geometry scalar) → EventCandidate geometry scalar
+  FundamentalFace : {geometry : ThurstonGeometry} → {scalar : Type} → Number → (GeodesicHit geometry scalar) → EventCandidate geometry scalar
+  FundamentalFaces : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → (List Number) → (FramedRay geometry scalar) → EventCandidate geometry scalar
+  CoordinateChartExit : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → EventCandidate geometry scalar
 
 public export
 event_parameter : {geometry : ThurstonGeometry} → {scalar : Type} →
                   EventCandidate geometry scalar → scalar
 event_parameter (SceneSurface _ hit) = parameter hit
+event_parameter (BracketedSurface _ _ _ hit) = parameter hit
 event_parameter (FundamentalFace _ hit) = parameter hit
+event_parameter (FundamentalFaces length _ _) = length
 event_parameter (CoordinateChartExit length) = length
 
 -- The provider promises that CompleteBefore enumerates ALL events strictly
--- inside (0, horizon); otherwise it must return UnknownBefore. In particular
+-- inside [0, horizon]; otherwise it must return UnknownBefore. In particular
 -- a signed-distance guess does not justify a complete-event assertion.
 public export
-data EventWindow (geometry : ThurstonGeometry) (scalar : Type)
-  = UnknownBefore scalar
-  | CompleteBefore scalar (List (EventCandidate geometry scalar))
+data EventWindowFailure = InvalidEventArithmetic | InvalidHorizon | MismatchedHorizons
+  | RootRefinementExhausted | UnsupportedSceneTraversal | TangentialPanelUnresolved
 
 public export
-data FirstEvent (geometry : ThurstonGeometry) (scalar : Type)
-  = MustRefine scalar
-  | ClearBefore scalar
-  | Earliest (EventCandidate geometry scalar)
+data EventWindow : ThurstonGeometry → Type → Type where
+  UnknownBefore : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → EventWindow geometry scalar
+  InvalidWindow : {geometry : ThurstonGeometry} → {scalar : Type} → EventWindowFailure → EventWindow geometry scalar
+  CompleteBefore : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → (List (EventCandidate geometry scalar)) → EventWindow geometry scalar
+
+public export
+data FirstEvent : ThurstonGeometry → Type → Type where
+  MustRefine : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → FirstEvent geometry scalar
+  InvalidEvents : {geometry : ThurstonGeometry} → {scalar : Type} → EventWindowFailure → FirstEvent geometry scalar
+  ClearBefore : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → FirstEvent geometry scalar
+  Earliest : {geometry : ThurstonGeometry} → {scalar : Type} → (EventCandidate geometry scalar) → FirstEvent geometry scalar
 
 private
-data Nearest (geometry : ThurstonGeometry) (scalar : Type)
-  = NoCandidate
-  | UniqueCandidate (EventCandidate geometry scalar)
-  | CoincidentCandidates scalar
+data Nearest : ThurstonGeometry → Type → Type where
+  NoCandidate : {geometry : ThurstonGeometry} → {scalar : Type} → Nearest geometry scalar
+  UniqueCandidate : {geometry : ThurstonGeometry} → {scalar : Type} → (EventCandidate geometry scalar) → Nearest geometry scalar
+  CoincidentCandidates : {geometry : ThurstonGeometry} → {scalar : Type} → scalar → scalar → Nearest geometry scalar
+
+private
+lower_parameter : {geometry : ThurstonGeometry} → {scalar : Type} → EventCandidate geometry scalar → scalar
+lower_parameter (BracketedSurface _ lower _ _) = lower
+lower_parameter candidate = event_parameter candidate
+
+private
+upper_parameter : {geometry : ThurstonGeometry} → {scalar : Type} → EventCandidate geometry scalar → scalar
+upper_parameter (BracketedSurface _ _ upper _) = upper
+upper_parameter candidate = event_parameter candidate
+
+private
+finite_frame : {geometry : ThurstonGeometry} → {scalar : Type} →
+               ScalarOperations scalar → FramedRay geometry scalar → Bool
+finite_frame arithmetic (RayWithFrame point direction right up forward) =
+  coordinate_values_finite arithmetic (coordinates_at point) &&
+  coordinate_values_finite arithmetic (tangent_components direction) &&
+  coordinate_values_finite arithmetic (tangent_components right) &&
+  coordinate_values_finite arithmetic (tangent_components up) &&
+  coordinate_values_finite arithmetic (tangent_components forward)
+
+private
+finite_hit : {geometry : ThurstonGeometry} → {scalar : Type} →
+             ScalarOperations scalar → GeodesicHit geometry scalar → Bool
+finite_hit arithmetic hit =
+  finite_frame arithmetic (frame_at_hit hit) &&
+  case normal_covector hit of CovectorAt normal => coordinate_values_finite arithmetic normal
+
+private
+finite_candidate : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   ScalarOperations scalar → EventCandidate geometry scalar → Bool
+finite_candidate arithmetic (SceneSurface _ hit) = finite_hit arithmetic hit
+finite_candidate arithmetic (BracketedSurface _ _ _ hit) = finite_hit arithmetic hit
+finite_candidate arithmetic (FundamentalFace _ hit) = finite_hit arithmetic hit
+finite_candidate arithmetic (FundamentalFaces _ labels ray) = not (null labels) && finite_frame arithmetic ray
+finite_candidate arithmetic (CoordinateChartExit _) = True
 
 private
 candidate_valid : {geometry : ThurstonGeometry} → {scalar : Type} →
@@ -68,9 +114,13 @@ candidate_valid : {geometry : ThurstonGeometry} → {scalar : Type} →
                   EventCandidate geometry scalar → Bool
 candidate_valid arithmetic horizon candidate =
   let length = event_parameter candidate
-  in scalar_finite arithmetic length &&
-     scalar_less arithmetic (scalar_zero arithmetic) length &&
-     scalar_less arithmetic length horizon
+      lower = lower_parameter candidate
+      upper = upper_parameter candidate
+  in finite_candidate arithmetic candidate && scalar_finite arithmetic length &&
+     scalar_finite arithmetic lower && scalar_finite arithmetic upper &&
+     not (scalar_less arithmetic lower (scalar_zero arithmetic)) &&
+     not (scalar_less arithmetic length lower) && not (scalar_less arithmetic upper length) &&
+     not (scalar_less arithmetic horizon upper)
 
 private
 candidates_valid : {geometry : ThurstonGeometry} → {scalar : Type} →
@@ -88,20 +138,26 @@ choose_nearest : {geometry : ThurstonGeometry} → {scalar : Type} →
                  Nearest geometry scalar → Nearest geometry scalar
 choose_nearest arithmetic [] current = current
 choose_nearest arithmetic (candidate :: rest) current =
-  let candidate_length = event_parameter candidate
+  let candidate_length = lower_parameter candidate
+      candidate_end = upper_parameter candidate
       next = case current of
         NoCandidate => UniqueCandidate candidate
         UniqueCandidate chosen =>
-          let chosen_length = event_parameter chosen
-          in if scalar_less arithmetic candidate_length chosen_length
+          let chosen_length = lower_parameter chosen
+              chosen_end = upper_parameter chosen
+          in if scalar_less arithmetic candidate_end chosen_length
                then UniqueCandidate candidate
-               else if scalar_less arithmetic chosen_length candidate_length
+               else if scalar_less arithmetic chosen_end candidate_length
                  then UniqueCandidate chosen
-                 else CoincidentCandidates chosen_length
-        CoincidentCandidates tied_length =>
-          if scalar_less arithmetic candidate_length tied_length
+                 else CoincidentCandidates
+                   (if scalar_less arithmetic candidate_length chosen_length then candidate_length else chosen_length)
+                   (if scalar_less arithmetic candidate_end chosen_end then chosen_end else candidate_end)
+        CoincidentCandidates tied_length tied_end =>
+          if scalar_less arithmetic candidate_end tied_length
             then UniqueCandidate candidate
-            else CoincidentCandidates tied_length
+            else CoincidentCandidates
+              (if scalar_less arithmetic candidate_length tied_length then candidate_length else tied_length)
+              (if scalar_less arithmetic candidate_end tied_end then tied_end else candidate_end)
   in choose_nearest arithmetic rest next
 
 -- Ties/refinement are first-class: never pick an arbitrary face over an
@@ -113,12 +169,28 @@ first_event : {geometry : ThurstonGeometry} → {scalar : Type} →
               EventWindow geometry scalar →
               FirstEvent geometry scalar
 first_event arithmetic (UnknownBefore horizon) = MustRefine horizon
+first_event arithmetic (InvalidWindow reason) = InvalidEvents reason
 first_event arithmetic (CompleteBefore horizon candidates) =
   if not (scalar_finite arithmetic horizon &&
           scalar_less arithmetic (scalar_zero arithmetic) horizon &&
           candidates_valid arithmetic horizon candidates)
-    then MustRefine horizon
+    then InvalidEvents InvalidEventArithmetic
     else case choose_nearest arithmetic candidates NoCandidate of
       NoCandidate => ClearBefore horizon
       UniqueCandidate candidate => Earliest candidate
-      CoincidentCandidates length => MustRefine length
+      CoincidentCandidates length _ => MustRefine length
+
+-- Independent complete providers must cover the SAME window. In particular
+-- an empty cube's face provider cannot certify a populated scene by itself.
+export
+combine_windows : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ScalarOperations scalar → EventWindow geometry scalar →
+                  EventWindow geometry scalar → EventWindow geometry scalar
+combine_windows arithmetic (InvalidWindow reason) _ = InvalidWindow reason
+combine_windows arithmetic _ (InvalidWindow reason) = InvalidWindow reason
+combine_windows arithmetic (UnknownBefore length) _ = UnknownBefore length
+combine_windows arithmetic _ (UnknownBefore length) = UnknownBefore length
+combine_windows arithmetic (CompleteBefore left candidates) (CompleteBefore right others) =
+  if scalar_less arithmetic left right || scalar_less arithmetic right left
+    then InvalidWindow MismatchedHorizons
+    else CompleteBefore left (candidates ++ others)

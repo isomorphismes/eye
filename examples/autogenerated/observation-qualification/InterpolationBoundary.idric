@@ -1,0 +1,9 @@
+module InterpolationBoundary
+
+-- Boundary-name grammar probe, not an Eye runtime replacement.
+public export
+data Probe : Type where
+  Interop.Wrap : Double → Probe
+
+unpack_probe : Probe → Double
+unpack_probe (Interop.Wrap value) = value

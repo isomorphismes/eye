@@ -1,0 +1,125 @@
+module Eye.Render
+
+import Data.Text
+import Eye.Geometry
+import Eye.Models
+import Eye.Observer
+import Eye.Optics
+import Eye.Scene
+import Eye.Visibility
+import Eye.Quotient
+import Eye.Trace
+import Eye.FlatTorus
+import Eye.Interop.Scalars
+
+%unbound_implicits off
+
+-- A deterministic small pixel consumer, not a second geometric engine.
+-- Observer construction, propagation, roots, quotient decisions and local
+-- lighting all execute the Eye modules. PPM is only pixel presentation.
+private
+record Pixel where
+  constructor RGB
+  red : Number
+  green : Number
+  blue : Number
+
+private
+failed_pixel : Pixel
+failed_pixel = RGB 255 0 255
+
+private
+panels_for : ThurstonGeometry → Bool → List (PlanePanel Float32)
+panels_for Euclidean3 True =
+  [Panel 1 0.5 0.4 0.6 0.4 0.6, Panel 2 0.75 0.02 0.98 0.02 0.98]
+panels_for Euclidean3 False =
+  [Panel 1 0.75 (-0.2) 0.2 (-0.2) 0.2, Panel 2 1.5 (-1.5) 1.5 (-1.0) 1.0]
+panels_for Hyperbolic3 _ =
+  [Panel 1 0.55 (-0.2) 0.2 0.55 1.2, Panel 2 0.9 (-1.5) 1.5 0.05 3.0]
+panels_for _ _ = []
+
+private
+services_for : (geometry : ThurstonGeometry) → Bool → TraceServices geometry Float32
+services_for Euclidean3 torus =
+  let model = model_for Euclidean3 numeric_operations
+      provider = scene_window Euclidean3 model 0.00002 0.00002 0.001 (panels_for Euclidean3 torus)
+  in if torus then torus_services numeric_operations provider
+     else TraceWith provider (\_ => Nothing) (\_, _ => Nothing) (\_ => Nothing)
+services_for geometry _ =
+  let model = model_for geometry numeric_operations
+      provider = scene_window geometry model 0.00002 0.00002 0.001 (panels_for geometry False)
+  in TraceWith provider (\_ => Nothing) (\_, _ => Nothing) (\_ => Nothing)
+
+private
+normal_scale : {geometry : ThurstonGeometry} → Point geometry Float32 → Float32
+normal_scale (Located HyperbolicUpperHalfSpace (XYZ _ _ z)) = divide_scalar 1.0 z
+normal_scale _ = 1.0
+
+private
+lit_pixel : {geometry : ThurstonGeometry} → Number → GeodesicHit geometry Float32 → Pixel
+lit_pixel label hit =
+  let arithmetic = the (ScalarOperations Float32) numeric_operations
+      normal = case normal_covector hit of CovectorAt values => values
+      unit_normal = scale_coordinates arithmetic (normal_scale (hit_point hit)) normal
+      light = negate_coordinates arithmetic (tangent_components (arriving_tangent hit))
+      incident = AtIlluminatedPoint (hit_point hit) (CovectorAt unit_normal)
+        (AtPoint light) (arriving_tangent hit)
+  in case diffuse_incidence arithmetic incident of
+    Nothing => failed_pixel
+    Just weight =>
+      let bounded = if weight > 1.0 then 1.0 else weight
+          intensity : Number
+          intensity = cast (the Integer (cast (to_reference (64.0 + 160.0 × bounded))))
+      in if label ≟ 1 then RGB intensity 55 24 else RGB 24 intensity intensity
+
+private
+pixel_for : (geometry : ThurstonGeometry) → Bool → Observer geometry Float32 → Number → Number → Pixel
+pixel_for geometry torus observer column row =
+  let model = model_for geometry numeric_operations
+      horizontal = divide_scalar (fromInteger (cast column) - 15.5) 32.0
+      vertical = divide_scalar (11.5 - fromInteger (cast row)) 32.0
+  in case framed_ray_through_screen model observer horizontal vertical of
+    Nothing => failed_pixel
+    Just ray => case trace_bounded 512 12 model (services_for geometry torus)
+                       0.00002 4.0 0.125 (start_lift ray) of
+      JourneyHit _ label hit => lit_pixel label hit
+      TravelLimitReached _ _ => RGB 10 18 32
+      JourneyStopped _ _ _ => failed_pixel
+
+private
+pixel_text : Pixel → Text
+pixel_text (RGB red green blue) = show red ++ " " ++ show green ++ " " ++ show blue
+
+private
+row_text : (geometry : ThurstonGeometry) → Bool → Observer geometry Float32 → Number → Text
+row_text geometry torus observer row =
+  unwords (map (\column => pixel_text (pixel_for geometry torus observer column row)) [0..31])
+
+export
+render_ppm : (geometry : ThurstonGeometry) → Bool → Observer geometry Float32 → Text
+render_ppm geometry torus observer =
+  "P3\n32 24\n255\n" ++ unlines (map (row_text geometry torus observer) [0..23])
+
+export
+initial_observer : (geometry : ThurstonGeometry) → Bool → Observer geometry Float32
+initial_observer Euclidean3 torus =
+  let position = if torus then XYZ 0.875 0.5 0.5 else XYZ 0.0 0.0 0.0
+  in ObserveFrom (Located Cartesian position) (AtPoint (XYZ 0.0 1.0 0.0))
+    (AtPoint (XYZ 0.0 0.0 1.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+initial_observer Hyperbolic3 _ =
+  ObserveFrom (Located HyperbolicUpperHalfSpace (XYZ 0.0 0.0 1.0)) (AtPoint (XYZ 0.0 1.0 0.0))
+    (AtPoint (XYZ 0.0 0.0 1.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+initial_observer geometry _ =
+  -- No other demonstration geometry is admitted by scene_window yet.
+  ObserveFrom (Located (preferred geometry) (XYZ 0.0 1.0 1.0))
+    (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+  where
+    preferred : (kind : ThurstonGeometry) → Chart kind
+    preferred Euclidean3 = Cartesian
+    preferred Spherical3 = Sphere3Stereographic
+    preferred Hyperbolic3 = HyperbolicUpperHalfSpace
+    preferred Sphere2TimesLine = Sphere2StereographicProduct
+    preferred Hyperbolic2TimesLine = HyperbolicHalfPlaneProduct
+    preferred Nil3 = NilHeisenberg
+    preferred Sol3 = SolStandard
+    preferred UniversalCoverSL2 = SL2LiftedHalfPlane

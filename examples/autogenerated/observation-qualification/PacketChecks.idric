@@ -1,0 +1,64 @@
+module PacketChecks
+
+import Data.Text
+import Eye.Geometry
+import Eye.Handoff
+import Eye.Interop.Scalars
+import Eye.Interop.Packet
+
+private
+fixture : {precision : ScalarPrecision} → FramedRay Euclidean3 (Scalar precision)
+fixture = RayWithFrame (Located Cartesian (XYZ 0.75 0.25 0.5))
+  (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+  (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+
+private
+round_trip : (precision : ScalarPrecision) → Bool
+round_trip precision = case encode_frame (the (FramedRay Euclidean3 (Scalar precision)) fixture) of
+  Left _ ⇒ False
+  Right bytes ⇒ case decode_frame Euclidean3 precision bytes of
+    Left _ ⇒ False
+    Right restored ⇒ case encode_frame restored of Left _ ⇒ False; Right repeated ⇒ bytes ≟ repeated
+
+private
+header_and_layout : Bool
+header_and_layout = case encode_frame (the (FramedRay Euclidean3 Float32) fixture) of
+  Left _ ⇒ False
+  Right bytes ⇒ length bytes ≟ 68 && take 8 bytes ≟ [69,89,69,1,0,0,0,0] &&
+    take 4 (drop 20 bytes) ≟ [0,0,128,63]
+
+private
+reject_malformed : Bool
+reject_malformed = case encode_frame (the (FramedRay Euclidean3 FloatE4M3) fixture) of
+  Left _ ⇒ False
+  Right bytes ⇒
+    (case decode_frame Euclidean3 SinglePrecision bytes of Left WrongPrecision ⇒ True; _ ⇒ False) &&
+    (case decode_frame Hyperbolic3 SignedE4M3 bytes of Left WrongGeometry ⇒ True; _ ⇒ False) &&
+    (case decode_frame Euclidean3 SignedE4M3 (drop 1 bytes) of Left InvalidPacketHeader ⇒ True; _ ⇒ False) &&
+    (case decode_frame Euclidean3 SignedE4M3 (bytes ++ [0]) of Left InvalidPacketLength ⇒ True; _ ⇒ False) &&
+    (case decode_frame Euclidean3 SignedE4M3 (take 10 bytes) of Left InvalidPacketLength ⇒ True; _ ⇒ False) &&
+    (case decode_frame Euclidean3 SignedE4M3 ([69,89,69,1,1,0,0,0,127] ++ drop 9 bytes) of Left InvalidScalar ⇒ True; _ ⇒ False) &&
+    (case decode_frame Euclidean3 SignedE4M3 ([69,89,69,1,1,0,1,0] ++ drop 8 bytes) of Left InvalidChart ⇒ True; _ ⇒ False)
+
+private
+opposite_chart_round_trip : Bool
+opposite_chart_round_trip =
+  let ray = RayWithFrame (Located Sphere3OppositeStereographic (the (Coordinates Float32) (XYZ 0.25 0.0 0.0)))
+        (AtPoint (XYZ 0.5 0.0 0.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+  in case encode_frame ray of
+    Left _ ⇒ False
+    Right bytes ⇒ case decode_frame Spherical3 SinglePrecision bytes of
+      Left _ ⇒ False
+      Right received ⇒ chart_code (chart_at (frame_location received)) ≟ 1
+
+export
+packet_checks : List (Text, Bool)
+packet_checks =
+  [ ("Float32 complete frame byte round trip", round_trip SinglePrecision)
+  , ("E4M3 complete frame byte round trip", round_trip SignedE4M3)
+  , ("Float32 handoff tags, size and little-endian one", header_and_layout)
+  , ("handoff rejects wrong tags and malformed lengths", reject_malformed)
+  , ("E4M3 handoff uses exactly 23 bytes", case encode_frame (the (FramedRay Euclidean3 FloatE4M3) fixture) of Left _ ⇒ False; Right bytes ⇒ length bytes ≟ 23)
+  , ("frame byte handoff preserves the opposite spherical chart", opposite_chart_round_trip)
+  ]

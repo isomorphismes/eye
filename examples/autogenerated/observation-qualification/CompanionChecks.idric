@@ -1,0 +1,22 @@
+module CompanionChecks
+
+import Data.Text
+import Eye.Companions.Regina
+import Eye.Companions.Coxeter
+
+private
+word_evidence : List WordRewrite
+word_evidence =
+  [RewriteWord [1,3,1] [3,1,1] CommuteOrderTwo 0,
+   RewriteWord [3,1,1] [3] CancelInvolution 1]
+
+export
+companion_checks : List (Text, Bool)
+companion_checks =
+  [ ("Regina imported six-tetrahedron torus incidence", validate_closed_six_cell_incidence three_torus_pairings)
+  , ("Regina incidence is used in a face lookup", paired_cell three_torus_pairings 0 Vertex0 ≟ Just 1)
+  , ("Regina missing pairing refuses", not (validate_closed_six_cell_incidence (drop 1 three_torus_pairings)))
+  , ("Coxeter exact A3 proof replay", replay FiniteA3 [1,3,1] word_evidence ≟ Just [3])
+  , ("Coxeter A3 generators are not A2 evidence", replay FiniteA2 [1,3,1] word_evidence ≟ Nothing)
+  , ("Coxeter rejects fabricated covering relation", replay FiniteA3 [1,2] [RewriteWord [1,2] [2,1] CommuteOrderTwo 0] ≟ Nothing)
+  ]

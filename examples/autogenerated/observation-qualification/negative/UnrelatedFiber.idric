@@ -1,0 +1,14 @@
+module UnrelatedFiber
+
+import Eye.Geometry
+
+%unbound_implicits off
+
+first_point : Point Euclidean3 Double
+first_point = Located Cartesian (XYZ 0.0 0.0 0.0)
+
+other_point : Point Euclidean3 Double
+other_point = Located Cartesian (XYZ 1.0 0.0 0.0)
+
+wrong_fiber : Tangent first_point → Tangent other_point
+wrong_fiber direction = direction

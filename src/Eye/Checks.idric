@@ -22,7 +22,8 @@ public export
 within_tolerance : {scalar : Type} → ScalarOperations scalar →
                    scalar → scalar → scalar → Bool
 within_tolerance arithmetic observed expected tolerance =
-  scalar_finite arithmetic observed &&
+  scalar_finite arithmetic observed && scalar_finite arithmetic expected &&
+  scalar_finite arithmetic tolerance && scalar_less arithmetic (scalar_zero arithmetic) tolerance &&
   scalar_less arithmetic (absolute_difference arithmetic observed expected) tolerance
 
 public export
@@ -73,8 +74,8 @@ geodesic_speed_preserved : {geometry : ThurstonGeometry} →
 geodesic_speed_preserved model tolerance before after =
   let before_point = frame_location before
       after_point = frame_location after
-      original = metric_at model before_point
+      original = metric_at model (frame_location before)
         (frame_velocity before) (frame_velocity before)
-      finished = metric_at model after_point
+      finished = metric_at model (frame_location after)
         (frame_velocity after) (frame_velocity after)
   in within_tolerance (numbers model) finished original tolerance

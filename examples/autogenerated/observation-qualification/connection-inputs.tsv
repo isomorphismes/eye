@@ -1,0 +1,8 @@
+E3	Matrix([[1,0,0],[0,1,0],[0,0,1]])	[0,0,0]
+S3	4/(1+x*x+y*y+z*z)**2*eye(3)	[-2*((x*vx+y*vy+z*vz)*wx+(x*wx+y*wy+z*wz)*vx-(vx*wx+vy*wy+vz*wz)*x)/(1+x*x+y*y+z*z),-2*((x*vx+y*vy+z*vz)*wy+(x*wx+y*wy+z*wz)*vy-(vx*wx+vy*wy+vz*wz)*y)/(1+x*x+y*y+z*z),-2*((x*vx+y*vy+z*vz)*wz+(x*wx+y*wy+z*wz)*vz-(vx*wx+vy*wy+vz*wz)*z)/(1+x*x+y*y+z*z)]
+H3	Matrix([[1/z**2,0,0],[0,1/z**2,0],[0,0,1/z**2]])	[-(vx*wz+vz*wx)/z,-(vy*wz+vz*wy)/z,(vx*wx+vy*wy-vz*wz)/z]
+S2xR	Matrix([[4/(1+x*x+y*y)**2,0,0],[0,4/(1+x*x+y*y)**2,0],[0,0,1]])	[-2*((x*vx+y*vy)*wx+(x*wx+y*wy)*vx-(vx*wx+vy*wy)*x)/(1+x*x+y*y),-2*((x*vx+y*vy)*wy+(x*wx+y*wy)*vy-(vx*wx+vy*wy)*y)/(1+x*x+y*y),0]
+H2xR	Matrix([[1/y**2,0,0],[0,1/y**2,0],[0,0,1]])	[-(vx*wy+vy*wx)/y,(vx*wx-vy*wy)/y,0]
+Nil	Matrix([[1,0,0],[0,1+x*x,-x],[0,-x,1]])	[(vy*wz+vz*wy)/2-x*vy*wy,(x*(vx*wy+vy*wx)-(vx*wz+vz*wx))/2,((x*x-1)*(vx*wy+vy*wx)-x*(vx*wz+vz*wx))/2]
+Sol	Matrix([[exp(2*z),0,0],[0,exp(-2*z),0],[0,0,1]])	[vx*wz+vz*wx,-(vy*wz+vz*wy),exp(-2*z)*vy*wy-exp(2*z)*vx*wx]
+SL2cover	Matrix([[2/y**2,0,1/y],[0,1/y**2,0],[1/y,0,1]])	[-3*(vx*wy+vy*wx)/(2*y)-(vy*wz+vz*wy)/2,(2*vx*wx-vy*wy)/y+(vx*wz+vz*wx)/2,(vx*wy+vy*wx)/y**2+(vy*wz+vz*wy)/(2*y)]

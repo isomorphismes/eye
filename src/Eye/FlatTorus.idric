@@ -10,7 +10,10 @@ import Eye.Trace
 %unbound_implicits off
 
 -- First concrete, exact-in-formula quotient example:
--- E³ / Z³ with fundamental half-open unit cube [0,1)^3.
+-- E³ / Z³ with canonical fundamental cube [0,1)^3. Traversal uses the
+-- CLOSED cube's oriented boundary representatives: after x=0 moving left
+-- crosses, x=1 moving left is valid and its next crossing is at x=0.
+-- No epsilon is added and no travel is discarded at an identification.
 -- Only face events exist in this demonstration; a populated scene must add
 -- its OWN certified object events before claiming a complete event window.
 -- This model has identity face differentials (translations), unlike Nil/Sol.
@@ -29,11 +32,18 @@ record CubeCrossing (scalar : Type) where
   crossing_side : CubeSide
 
 public export
-data NextCubeFace (scalar : Type)
-  = OutsideCube
-  | NoPositiveCrossing
-  | FirstCubeFace (CubeCrossing scalar)
-  | SimultaneousCubeFaces scalar
+data NextCubeFace : Type → Type where
+  OutsideCube : {scalar : Type} → NextCubeFace scalar
+  InvalidCrossingArithmetic : {scalar : Type} → NextCubeFace scalar
+  NoPositiveCrossing : {scalar : Type} → NextCubeFace scalar
+  FirstCubeFace : {scalar : Type} → (CubeCrossing scalar) → NextCubeFace scalar
+  SimultaneousCubeFaces : {scalar : Type} → (List (CubeCrossing scalar)) → NextCubeFace scalar
+
+private
+data AxisCrossing : Type → Type where
+  StationaryAxis : {scalar : Type} → AxisCrossing scalar
+  InvalidAxisArithmetic : {scalar : Type} → AxisCrossing scalar
+  CrossingOnAxis : {scalar : Type} → (CubeCrossing scalar) → AxisCrossing scalar
 
 private
 valid_coordinate : {scalar : Type} → ScalarOperations scalar → scalar → Bool
@@ -53,37 +63,52 @@ inside_unit_cube arithmetic (Located Cartesian (XYZ x y z)) =
   valid_coordinate arithmetic z
 
 private
+closed_coordinate : {scalar : Type} → ScalarOperations scalar → scalar → Bool
+closed_coordinate arithmetic value =
+  scalar_finite arithmetic value &&
+  not (scalar_less arithmetic value (scalar_zero arithmetic)) &&
+  not (scalar_less arithmetic (scalar_one arithmetic) value)
+
+export
+in_closed_cube : {scalar : Type} → ScalarOperations scalar →
+                 Point Euclidean3 scalar → Bool
+in_closed_cube arithmetic (Located Cartesian (XYZ x y z)) =
+  closed_coordinate arithmetic x && closed_coordinate arithmetic y &&
+  closed_coordinate arithmetic z
+
+private
 axis_crossing : {scalar : Type} →
                 ScalarOperations scalar → CubeAxis →
-                scalar → scalar → Maybe (CubeCrossing scalar)
+                scalar → scalar → AxisCrossing scalar
 axis_crossing arithmetic axis coordinate direction =
   let zero = scalar_zero arithmetic
       one = scalar_one arithmetic
       positive = scalar_less arithmetic zero direction
       negative = scalar_less arithmetic direction zero
   in if not (scalar_finite arithmetic direction)
-       then Nothing
+       then InvalidAxisArithmetic
        else if positive
          then let length = scalar_divide arithmetic
                              (subtract_scalars arithmetic one coordinate) direction
               in if scalar_finite arithmetic length &&
-                    scalar_less arithmetic zero length
-                   then Just (AcrossCubeFace length axis MaximumFace)
-                   else Nothing
+                    not (scalar_less arithmetic length zero)
+                   then CrossingOnAxis (AcrossCubeFace length axis MaximumFace)
+                   else InvalidAxisArithmetic
          else if negative
            then let length = scalar_divide arithmetic
                                (subtract_scalars arithmetic zero coordinate) direction
                 in if scalar_finite arithmetic length &&
-                      scalar_less arithmetic zero length
-                     then Just (AcrossCubeFace length axis MinimumFace)
-                     else Nothing
-           else Nothing
+                      not (scalar_less arithmetic length zero)
+                     then CrossingOnAxis (AcrossCubeFace length axis MinimumFace)
+                     else InvalidAxisArithmetic
+           else StationaryAxis
 
 private
 combine_crossings : {scalar : Type} → ScalarOperations scalar →
                     NextCubeFace scalar → CubeCrossing scalar → NextCubeFace scalar
 combine_crossings arithmetic NoPositiveCrossing candidate = FirstCubeFace candidate
 combine_crossings arithmetic OutsideCube candidate = OutsideCube
+combine_crossings arithmetic InvalidCrossingArithmetic candidate = InvalidCrossingArithmetic
 combine_crossings arithmetic (FirstCubeFace selected) candidate =
   let earlier = crossing_length selected
       later = crossing_length candidate
@@ -91,27 +116,33 @@ combine_crossings arithmetic (FirstCubeFace selected) candidate =
        then FirstCubeFace candidate
        else if scalar_less arithmetic earlier later
          then FirstCubeFace selected
-         else SimultaneousCubeFaces earlier
-combine_crossings arithmetic (SimultaneousCubeFaces tied) candidate =
-  if scalar_less arithmetic (crossing_length candidate) tied
+         else SimultaneousCubeFaces [selected, candidate]
+combine_crossings arithmetic (SimultaneousCubeFaces []) candidate =
+  InvalidCrossingArithmetic
+combine_crossings arithmetic (SimultaneousCubeFaces (first :: rest)) candidate =
+  if scalar_less arithmetic (crossing_length candidate) (crossing_length first)
     then FirstCubeFace candidate
-    else SimultaneousCubeFaces tied
+    else if scalar_less arithmetic (crossing_length first) (crossing_length candidate)
+      then SimultaneousCubeFaces (first :: rest)
+      else SimultaneousCubeFaces (first :: rest ++ [candidate])
 
 private
 include_crossing : {scalar : Type} → ScalarOperations scalar →
                    NextCubeFace scalar →
-                   Maybe (CubeCrossing scalar) → NextCubeFace scalar
-include_crossing arithmetic selected Nothing = selected
-include_crossing arithmetic selected (Just candidate) =
+                   AxisCrossing scalar → NextCubeFace scalar
+include_crossing arithmetic selected StationaryAxis = selected
+include_crossing arithmetic selected InvalidAxisArithmetic = InvalidCrossingArithmetic
+include_crossing arithmetic selected (CrossingOnAxis candidate) =
   combine_crossings arithmetic selected candidate
 
 public export
 next_cube_face : {scalar : Type} → ScalarOperations scalar →
                  RayState Euclidean3 scalar → NextCubeFace scalar
 next_cube_face arithmetic (RayAt point (AtPoint (XYZ vx vy vz))) =
-  if not (inside_unit_cube arithmetic point &&
+  if not (coordinate_values_finite arithmetic (coordinates_at point) &&
           coordinate_values_finite arithmetic (XYZ vx vy vz))
-    then OutsideCube
+    then InvalidCrossingArithmetic
+    else if not (in_closed_cube arithmetic point) then OutsideCube
     else case coordinates_at point of
       XYZ x y z =>
         let by_x = axis_crossing arithmetic AxisX x vx
@@ -138,7 +169,7 @@ translate_point arithmetic delta (Located Cartesian position) =
   Located Cartesian (add_coordinates arithmetic position delta)
 
 private
-translate_tangent : {scalar : Type} → ScalarOperations scalar →
+translate_tangent : {scalar : Type} → (arithmetic : ScalarOperations scalar) →
                     (delta : Coordinates scalar) →
                     (point : Point Euclidean3 scalar) →
                     Tangent point → Tangent (translate_point arithmetic delta point)
@@ -212,14 +243,13 @@ cube_hit : {scalar : Type} → ScalarOperations scalar →
 cube_hit arithmetic crossing starting =
   let length = crossing_length crossing
       reached = straight_ray_and_frame arithmetic length starting
-      point = frame_location reached
-  in HitAlongRay length point (frame_velocity reached)
-       (face_covector arithmetic point crossing)
-       (frame_right reached) (frame_up reached) (frame_forward reached)
+  in case reached of
+    RayWithFrame point direction right up forward =>
+      HitAlongRay length point direction (face_covector arithmetic point crossing)
+        right up forward
 
--- Certify just the empty fundamental cube's FACE EVENTS on (0, horizon).
--- A tie in the minimum length or a face exactly at the horizon is unresolved;
--- never select a face by arbitrary axis ordering.
+-- Certify only an EMPTY cube's face events on [0,horizon]. Simultaneous
+-- torus translations are one event; their commutation is specific to Z³.
 public export
 empty_cube_window : {scalar : Type} → ScalarOperations scalar →
                     scalar → FramedRay Euclidean3 scalar →
@@ -231,19 +261,46 @@ empty_cube_window arithmetic horizon framed =
   in if not (scalar_finite arithmetic horizon &&
              scalar_less arithmetic zero horizon)
        then UnknownBefore horizon
-       else case next_cube_face arithmetic (RayAt position velocity) of
-         OutsideCube => UnknownBefore horizon
+       else case next_cube_face arithmetic (RayAt (frame_location framed) (frame_velocity framed)) of
+         OutsideCube => InvalidWindow InvalidEventArithmetic
+         InvalidCrossingArithmetic => InvalidWindow InvalidEventArithmetic
          NoPositiveCrossing => CompleteBefore horizon []
-         SimultaneousCubeFaces length => UnknownBefore length
+         SimultaneousCubeFaces [] => UnknownBefore horizon
+         SimultaneousCubeFaces (first :: rest) =>
+           let length = crossing_length first
+           in if scalar_less arithmetic horizon length
+                then CompleteBefore horizon []
+                else CompleteBefore horizon
+                  [FundamentalFaces length (map face_label (first :: rest))
+                    (straight_ray_and_frame arithmetic length framed)]
          FirstCubeFace crossing =>
            let length = crossing_length crossing
-           in if scalar_less arithmetic length horizon
+           in if not (scalar_less arithmetic horizon length)
                 then CompleteBefore horizon
                   [FundamentalFace (face_label crossing)
                     (cube_hit arithmetic crossing framed)]
-                else if scalar_less arithmetic horizon length
-                  then CompleteBefore horizon []
-                  else UnknownBefore horizon
+                else CompleteBefore horizon []
+
+private
+apply_torus_faces : {scalar : Type} → ScalarOperations scalar →
+                    List Number → LiftedRay Euclidean3 scalar →
+                    Maybe (LiftedRay Euclidean3 scalar)
+apply_torus_faces arithmetic [] lifted = Just lifted
+apply_torus_faces arithmetic (label :: rest) lifted =
+  case unit_cube_deck arithmetic label of
+    Nothing => Nothing
+    Just action => apply_torus_faces arithmetic rest (through_paired_face action lifted)
+
+private
+resolve_torus_faces : {scalar : Type} → ScalarOperations scalar →
+                      LiftedRay Euclidean3 scalar → TraceResult Euclidean3 scalar →
+                      TraceResult Euclidean3 scalar
+resolve_torus_faces arithmetic original (NeedsFaceBatch length labels reached) =
+  case apply_torus_faces arithmetic labels
+         (OnUniversalCover reached (crossed_deck_generators original)) of
+    Nothing => NeedRefinement length
+    Just finished => CrossedPairedFace finished
+resolve_torus_faces arithmetic original result = result
 
 -- One actual end-to-end high-level quotient step: detect next cube face,
 -- construct the exact hit-frame, apply its translation differential, and
@@ -254,9 +311,22 @@ trace_empty_flat_torus_window : {scalar : Type} →
                                 scalar → scalar → LiftedRay Euclidean3 scalar →
                                 TraceResult Euclidean3 scalar
 trace_empty_flat_torus_window arithmetic horizon tolerance lifted =
-  trace_one_window
+  resolve_torus_faces arithmetic lifted $ trace_one_window
     (model_for Euclidean3 arithmetic)
     tolerance
     (unit_cube_deck arithmetic)
     lifted
     (empty_cube_window arithmetic horizon (ray_and_frame lifted))
+
+-- This constructor is specific to the translation group Z³. General deck
+-- actions do not inherit its simultaneous-event resolution rule.
+export
+torus_services : {scalar : Type} → ScalarOperations scalar →
+                 (scalar → LiftedRay Euclidean3 scalar → EventWindow Euclidean3 scalar) →
+                 TraceServices Euclidean3 scalar
+torus_services arithmetic scene_events =
+  TraceWith
+    (\horizon, lifted => combine_windows arithmetic
+      (empty_cube_window arithmetic horizon (ray_and_frame lifted))
+      (scene_events horizon lifted))
+    (unit_cube_deck arithmetic) (apply_torus_faces arithmetic) (\_ => Nothing)

@@ -1,6 +1,6 @@
 # Eye — geometry from the observer's tangent space
 
-**Current state:** mathematical research notes plus the first **source-authored Idriç geometry implementation**. Eye studies what an observer sees when rays propagate intrinsically in a three-dimensional Riemannian space, including quotients. No compiler qualification, graphics backend, APK, native binary, or rendered output is claimed.
+**Current state:** mathematical notes and a compiler-qualified Idriç observation engine with Float32/E4M3 primitives, executable mathematical checks and a host-rendered demonstration. Direct native lowering and Android acceptance remain pending; see the [qualification record](docs/QUALIFICATION.md).
 
 ## First Idriç implementation
 
@@ -19,13 +19,13 @@
 [Verification checks](src/Eye/Checks.idric) ·
 [Reference cases](tests/REFERENCE.md).
 
-All eight local metrics and Christoffel contractions have been independently
-matched against the Levi-Civita formula. **The .idric modules have not been
-typechecked or executed with the maintained compiler.** A concrete empty-scene flat-torus face-crossing model now provides an
-exact Euclidean flow oracle and explicit deck translations. Global chart
-transitions, general certified intersection/event oracles, backend wiring,
-and rendering are still missing. The numerical stepper exposes diagnostics,
-not a certified global error bound.
+All 19 packaged Eye modules typecheck with the pinned maintained compiler.
+Executable tests cover all eight local models, transported frames, opposite
+spherical charts, repeated signed torus crossings and explicit failures.
+The symbolic connection checks have committed inputs and a reproducible
+procedure. The host demonstration executes Eye to render Euclidean, torus
+and hyperbolic scenes before and after observer movement. Numerical diagnostics
+remain distinct from rigorous global error bounds and certified root isolation.
 
 The semantic owner is Idriç; C, Lua, NDK and DEX are target/native boundaries
 rather than duplicate geometric engines. Fulton, Regina and Coxeter contribute
@@ -118,4 +118,7 @@ Mathematical state: $\mathrm{RayState}=\sum_{x:M}T_xM$. A ray is an initial-valu
 
 Each note distinguishes **inspected source**, **metadata-only**, **independently derived**, and **unverified** assertions; coordinates and signs belong to the local note and cannot silently be transferred between models. Source-code file links identify pinned snapshots, not promises of binary compatibility. This is original explanatory documentation, not vendored code or a copy of published material.
 
-**Scope:** One-off research and exposition. The [verification record](notes/architecture/verification-contract.md) distinguishes exact calculations and link/source checks from unrun numerical integrators or any independent acceptance process. This repository selects no runtime dependencies or rendering engine.
+**Scope:** Direct, one-off repository work. The mathematical corpus and its
+[verification contract](notes/architecture/verification-contract.md) remain
+intact. Executable evidence, precision, runtime dependencies and remaining
+target boundaries are recorded in [qualification](docs/QUALIFICATION.md).

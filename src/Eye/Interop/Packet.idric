@@ -1,0 +1,89 @@
+module Eye.Interop.Packet
+
+import Data.Bits
+import Eye.Geometry
+import Eye.Models
+import Eye.Geodesic
+import Eye.Handoff
+import Eye.Interop.Scalars
+
+-- A byte-level frame handoff, independent of C struct padding or compiler
+-- heap layout. The caller owns the returned byte list; import copies values.
+-- Header: E,Y,E,version=1, precision, geometry, chart, reserved=0.
+-- Payload: location, velocity, right, up, forward; xyz order in each triple.
+-- Float32 words are little-endian; E4M3 scalars occupy exactly one byte.
+public export
+data PacketFailure = InvalidFrame | InvalidPacketHeader | WrongPrecision
+  | WrongGeometry | InvalidChart | InvalidPacketLength | InvalidScalar
+
+private
+precision_tag : ScalarPrecision → Bits8
+precision_tag SinglePrecision = 0
+precision_tag SignedE4M3 = 1
+
+private
+coordinates_list : {scalar : Type} → Coordinates scalar → List scalar
+coordinates_list (XYZ x y z) = [x,y,z]
+
+private
+scalar_bytes : {precision : ScalarPrecision} → Scalar precision → List Bits8
+scalar_bytes {precision = SignedE4M3} value = [cast (scalar_bits value)]
+scalar_bytes {precision = SinglePrecision} value =
+  let bits = scalar_bits value
+  in [cast bits, cast (bits `shiftR` 8), cast (bits `shiftR` 16), cast (bits `shiftR` 24)]
+
+export
+encode_frame : {geometry : ThurstonGeometry} → {precision : ScalarPrecision} →
+               FramedRay geometry (Scalar precision) → Either PacketFailure (List Bits8)
+encode_frame {geometry} {precision} ray =
+  if not (framed_ray_valid (model_for geometry numeric_operations) ray) then Left InvalidFrame
+  else
+    let values = coordinates_list (coordinates_at (frame_location ray)) ++
+          coordinates_list (tangent_components (frame_velocity ray)) ++
+          coordinates_list (tangent_components (frame_right ray)) ++
+          coordinates_list (tangent_components (frame_up ray)) ++
+          coordinates_list (tangent_components (frame_forward ray))
+        header = [69,89,69,1,precision_tag precision,cast (geometry_code geometry),
+          cast (chart_code (chart_at (frame_location ray))),0]
+    in Right (header ++ concatMap scalar_bytes values)
+
+private
+read_scalar : (precision : ScalarPrecision) → List Bits8 →
+              Maybe (Scalar precision, List Bits8)
+read_scalar SignedE4M3 (first :: rest) = map (\value ⇒ (value, rest)) (from_storage SignedE4M3 (cast first))
+read_scalar SinglePrecision (first :: second :: third :: fourth :: rest) =
+  let bits : Bits32
+      bits = cast first .|. ((cast second) `shiftL` 8) .|.
+        ((cast third) `shiftL` 16) .|. ((cast fourth) `shiftL` 24)
+  in map (\value ⇒ (value, rest)) (from_storage SinglePrecision bits)
+read_scalar _ _ = Nothing
+
+private
+read_scalars : Number → (precision : ScalarPrecision) → List Bits8 →
+               Maybe (List (Scalar precision))
+read_scalars Z precision [] = Just []
+read_scalars Z precision _ = Nothing
+read_scalars (S later) precision bytes = case read_scalar precision bytes of
+  Nothing ⇒ Nothing
+  Just (value, rest) ⇒ map (value ::) (read_scalars later precision rest)
+
+export
+decode_frame : (geometry : ThurstonGeometry) → (precision : ScalarPrecision) →
+               List Bits8 → Either PacketFailure (FramedRay geometry (Scalar precision))
+decode_frame geometry precision (69 :: 89 :: 69 :: 1 :: width :: space :: chart :: 0 :: payload) =
+  if not (width ≟ precision_tag precision) then Left WrongPrecision
+  else if not (space ≟ cast (geometry_code geometry)) then Left WrongGeometry
+  else case receive_chart geometry (cast chart) of
+    Nothing ⇒ Left InvalidChart
+    Just selected_chart ⇒ case read_scalars 15 precision payload of
+      Nothing ⇒ Left InvalidPacketLength
+      Just values ⇒ if not (all finite_scalar values) then Left InvalidScalar
+        else case values of
+          [x,y,z,vx,vy,vz,rx,ry,rz,ux,uy,uz,fx,fy,fz] ⇒
+            let ray = RayWithFrame (Located selected_chart (XYZ x y z))
+                  (AtPoint (XYZ vx vy vz)) (AtPoint (XYZ rx ry rz))
+                  (AtPoint (XYZ ux uy uz)) (AtPoint (XYZ fx fy fz))
+            in if framed_ray_valid (model_for geometry numeric_operations) ray then Right ray
+               else Left InvalidFrame
+          _ ⇒ Left InvalidPacketLength
+decode_frame _ _ _ = Left InvalidPacketHeader

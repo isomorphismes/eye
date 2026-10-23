@@ -21,19 +21,23 @@ public export
 data Chart : ThurstonGeometry → Type where
   Cartesian : Chart Euclidean3
   Sphere3Stereographic : Chart Spherical3
+  Sphere3OppositeStereographic : Chart Spherical3
   HyperbolicUpperHalfSpace : Chart Hyperbolic3
   Sphere2StereographicProduct : Chart Sphere2TimesLine
+  Sphere2OppositeStereographicProduct : Chart Sphere2TimesLine
   HyperbolicHalfPlaneProduct : Chart Hyperbolic2TimesLine
   NilHeisenberg : Chart Nil3
   SolStandard : Chart Sol3
   SL2LiftedHalfPlane : Chart UniversalCoverSL2
 
 public export
-data Coordinates (scalar : Type) = XYZ scalar scalar scalar
+data Coordinates : Type → Type where
+  XYZ : {scalar : Type} → scalar → scalar → scalar → Coordinates scalar
 
 public export
 data Point : ThurstonGeometry → Type → Type where
-  Located : Chart geometry → Coordinates scalar → Point geometry scalar
+  Located : {geometry : ThurstonGeometry} → {scalar : Type} →
+            Chart geometry → Coordinates scalar → Point geometry scalar
 
 -- An unindexed Coordinates value may cross a numeric ABI, but never
 -- masquerades as an intrinsically typed tangent or point.

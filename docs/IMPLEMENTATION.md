@@ -1,58 +1,26 @@
-# Eye: Idriç mathematical implementation and native handoff
+# Eye: Idriç observation implementation
 
-**Status (2026-10-22): source-authored first vertical slice; NOT compiler-qualified,
-backend-executed, Android-tested, merged, or rendered.** The source extends the
-enhanced 50-note corpus branch in Eye PR #2, not a substitute for verifying that corpus. There is
-no Flexible Pipes dependency for this one-off implementation.
+The maintained compiler accepts the packaged modules and executes the host
+qualification suite. Exact pins, commands, mathematical evidence, rendered
+examples and remaining native/Android boundaries are in
+[QUALIFICATION.md](QUALIFICATION.md). No Flexible Pipes dependency applies.
 
-## What the source does
+## Ownership
 
-- [Geometry](../src/Eye/Geometry.idric) defines all eight Thurston space
-  identities, explicitly local charts, points, tangent and cotangent fibers,
-  rays and observer frames. A vector at one point cannot be passed to an
-  operation requiring the tangent fiber of another point without explicit
-  reattachment or transport.
-- [Models](../src/Eye/Models.idric) provides all eight local Riemannian
-  metrics and bilinear Christoffel contractions in the coordinates fixed below.
-  This is NOT a global atlas, completeness proof or a universal analytic
-  geodesic flow. In particular, Γ is not the covariant derivative of an
-  arbitrary field.
-- [Geodesic](../src/Eye/Geodesic.idric) evolves the base point, velocity, and
-  three frame axes with the **same** RK4 stages, using v' = -Γ(v,v) and
-  E' = -Γ(v,E). Full step versus two half steps gives an *absolute coordinate*
-  error proxy, not a rigorous intrinsic/global error bound. Invalid stages
-  and excess local differences cause explicit refusals.
-- [Observer](../src/Eye/Observer.idric) makes pixel rays from local
-  tangent-frame combinations and normalizes with the local metric.
-- [Visibility](../src/Eye/Visibility.idric) orders scene, paired-face and
-  chart-exit candidates in one affine parameter. Unknown windows, malformed
-  complete windows and equal-parameter ties refuse selection.
-- [Quotient](../src/Eye/Quotient.idric) acts on points **and** their tangent
-  fibers, including camera frame axes; it retains a symbolic deck word.
-- [FlatTorus](../src/Eye/FlatTorus.idric) is the first concrete E³/Z³
-  empty-scene quotient: solve positive cube-face crossing times, refuse
-  coincident faces, propagate rays by the exact Euclidean flow, and apply
-  signed unit translations with their identity tangent differential.
-  It intentionally certifies face events **only in an empty scene**.
-- [Incidence](../src/Eye/Incidence.idric) distinguishes a defining equation,
-  its covector differential, an assessed root, and the *first along-ray event*.
-- [Optics](../src/Eye/Optics.idric) pairs a normal covector with a local
-  light vector only at the same point; no flat-space inverse-square law is
-  silently assumed.
-- [Trace](../src/Eye/Trace.idric) orchestrates one complete event window:
-  advance, report an object hit, apply a paired-face isometry, request a chart
-  transition, or ask for refinement. It does not call a graphics library.
-- [Handoff](../src/Eye/Handoff.idric) lowers one ray to a geometry-tagged,
-  chart-tagged *logical* packet; receiving it requires domain checks.
-  It is **not** yet a binary ABI for C/NDK/ART.
-- [Checks](../src/Eye/Checks.idric) offers metric/frame/speed diagnostics
-  to qualify a future numerical implementation.
+Idriç owns points and fibers, metrics/connections, observer rays and motion,
+parallel transport, chart changes, trace state, scene intersections, event
+ordering, quotient decisions and lighting. `_/numeric/scalars.c` contains only
+scalar primitives; `Eye.Interop.Scalars` makes their Float32/E4M3FN storage,
+conversion, finite arithmetic and rounding explicit. No C renderer or RefC
+fallback supplies the images.
 
-## Coordinate choices and exact source of connection coefficients
+The local state distinguishes points, tangent vectors and normal covectors.
+Every tangent/cotangent retains its base point. Reconstructing values from raw
+chart components is an explicit operation in the geometry/interoperability
+code; it never identifies unrelated fibers implicitly. Negative compiler tests
+exercise both fiber identity and the vector/covector distinction.
 
-These choices match the corresponding [Thurston notes](../notes/thurston/).
-They MUST be carried with a model identity; two formulas with similar names
-but different gauges must not be combined.
+## Local models
 
 | Space | Local chart and metric |
 |---|---|
@@ -65,83 +33,44 @@ but different gauges must not be combined.
 | Sol | exp(2z)dx² + exp(−2z)dy² + dz² |
 | SL̃₂(R) | lifted (x,y,θ), y>0: (dx/y)² + (dy/y)² + (dθ+dx/y)² |
 
-For an Riemannian metric, the source's Γ contraction uses
+`Eye.Models` returns Γ(v,w); `Eye.Geodesic` applies its negative in the
+velocity and frame ODEs. Position, velocity and all three frame axes share
+RK4 stages. Step doubling measures an absolute coordinate discrepancy;
+finite values, nonzero progress, speed and the full Gram matrix are checked
+separately. This is not a certified global intrinsic error bound.
 
-    Γᵏᵢⱼ = (1/2) gᵏˡ (∂ᵢgₗⱼ + ∂ⱼgₗᵢ − ∂ₗgᵢⱼ)
+## Observation path
 
-and the convention ∇ᵥw in coordinates has its ordinary derivative plus Γ(v,w).
-The implementation returns **Γ(v,w)**, not −Γ(v,w); the ODE applies the minus.
+`Eye.Observer` constructs metric-normalized local rays and transports facing
+when the observer moves. `Eye.Atlas` changes stereographic charts with the
+correct tangent Jacobian and inverse-transpose covector transformation.
+`Eye.Visibility` compares events and numerical time brackets, and
+`Eye.Trace.trace_bounded` accounts for distance, affine parameter, refinement,
+zero-time events and explicit termination reasons.
 
-An independent symbolic calculation against this defining formula matched all
-eight implemented contractions (2026-10-22). That check does **not** establish
-that Idriç typechecks, that the compiled arithmetic matches these expressions,
-or that RK4 satisfies numerical error targets.
+`Eye.FlatTorus` supplies direction-aware closed-boundary representatives for
+its canonical half-open cube and resolves only its own commuting translation
+batches. Full ray/frame state and generator history cross every identification.
+A populated scene combines its surface provider with the quotient provider.
 
-## Reuse without swallowing other projects
+`Eye.Scene` supplies transverse rectangular coordinate panels in E³/H³;
+unknown, tangential, overlapping or numerically unresolved cases refuse.
+`Eye.Incidence` separates defining equations, differentials, residuals and
+multiplicity. `Eye.Optics` contracts normals with light directions at the same
+point. `Eye.Render` consumes this pipeline and emits deterministic pixels.
 
-- **[walnut-burgundy/fulton](https://github.com/walnut-burgundy/fulton)**:
-  intersection constraints, algebraic locus/restriction ideas, multiplicity
-  distinctions, Gromov curvature notes. In Eye, a defining equation and
-  its differential enter `ImplicitSurface`; certified first-hit detection
-  remains additional work. The repo is research, not a generic ray engine.
-- **[walnut-burgundy/regina](https://github.com/walnut-burgundy/regina)**:
-  topology/triangulation and face-pairing data (see
-  `engine/triangulation`). A Regina triangulation is not, by itself, an
-  intrinsic geodesic solver, a certified distance estimator, or an isometry
-  of a chosen Thurston metric. Do not import the entire C++ engine.
-- **[walnut-burgundy/coxeter](https://github.com/walnut-burgundy/coxeter)**:
-  reflection generator words, exact relations, replayable reduction evidence.
-  Its executable reducer currently covers A₂/A₃, NOT arbitrary hyperbolic
-  deck groups. In particular, the [*237 warning](https://github.com/walnut-burgundy/coxeter/blob/main/notes/triangle-237-symmetry-bridge.md)
-  forbids interpreting equality in finite PGL(2,F7) as equality in the
-  infinite triangle group. Do not guess generators from floating matrices.
-- **[isomorphisms/Idric](https://github.com/isomorphisms/Idric)**:
-  authoritative compiler and syntax; point-dependent fiber semantics belong
-  here in the user program, not in a new bespoke compiler. Its existing
-  named-space exact vector examples do not replace point-indexed tangents.
-- **[Coulon–Matsumoto–Segerman–Trettel](../notes/sources/ray-marching-thurston.md)**:
-  main source for the eight geometric models and practical rendering risks;
-  source study does not license shader copy/paste or define our language.
+## Companion boundaries
 
-## Lowest layers only
+`Eye.Companions.Regina` imports and validates concrete six-tetrahedron torus
+incidence data, without assigning a metric. `Eye.Companions.Coxeter` replays
+exact A2/A3 relation evidence without projecting finite-quotient equality into
+a covering group. Fulton supplies the constraint/differential/root distinction
+used by the panel intersector. Concrete source paths and pins are in the
+qualification record.
 
-Idriç owns scene/observer/geometry/event semantics, deterministic trace
-decisions, quotient word logic, and API validations. A supplied scalar backend
-owns width- and target-specific add/multiply/divide, exp, sqrt and finite tests.
-Later numerical acceleration kernels may be in C/NDK, with DEX/ART as an
-independently qualified target and Lua reserved for low-level integration or
-presentation glue where justified. Any GPU shader is a lowering of the
-mathematical model, not a competing owner of the model.
-
-Avoid RefC or a silent host-Double fallback as acceptance. Do not choose
-raylib/sokol by reflex. A C, Lua, NDK or DEX implementation must report its
-actual lane, compiler commit, precision, numerical limits and independent
-acceptance.
-
-## Known blockers (not hidden by the eight formulas)
-
-1. **Compiler check:** typecheck all `.idric` modules with a pinned maintained
-   compiler. The source has NOT been successfully typechecked here.
-2. **Scalar qualification:** provide properly rounded supported widths,
-   finite/NaN/infinity handling, and honest exp/sqrt semantics.
-3. **Numerical integration:** rigorous adaptive error control, chart-path
-   coverage (not just RK4 stage validation), unit-speed/frame drift budgets,
-   singularity handling, and comparison to analytic rays.
-4. **Atlases:** chart transitions and tangent/normal/frame Jacobians.
-   Spherical stereographic charts omit a pole. No transition is implemented.
-5. **Global quotients:** only the empty flat three-torus's explicit cube
-   translations and face times have source code. Other groups still need
-   certified side pairings, faithful actions, nearest seam events and
-   repeated scenery; never infer lattices from topology alone.
-6. **Ray/event oracles:** root isolation, conservative distance bounds,
-   first-hit guarantees, coincident event refinement and no tunneling.
-7. **Rendering:** finite sampling/lighting/occlusion contracts, an actual
-   C/NDK/DEX/graphics handoff, and an APK/device qualification if required.
-
-The first *source-authored* E³ flat-torus face-pairing sample now exists.
-The next runnable target is its compiler-qualified execution and an independent
-H³ vertical-ray oracle, followed by measured native output. The [reference cases](../tests/REFERENCE.md) specify concrete
-expected results.
-
-This is a direct repository implementation. It neither dispatches nor depends
-on the Flexible Pipes process.
+`Eye.Handoff` checks geometry/chart identity, domains and nonzero directions.
+Its original ray packet is logical. `Eye.Interop.Packet` supplies a complete,
+versioned Float32/E4M3 frame wire format with executable round trips and
+malformed-input rejection. The scalar C ABI is executed; a direct-native or
+Android consumer of the frame wire remains unqualified. Native lowering, APK build, installation and physical execution
+remain separate acceptance stages.

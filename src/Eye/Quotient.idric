@@ -33,16 +33,15 @@ public export
 through_paired_face : {geometry : ThurstonGeometry} → {scalar : Type} →
                       DeckAction geometry scalar → LiftedRay geometry scalar →
                       LiftedRay geometry scalar
-through_paired_face deck (OnUniversalCover ray word) =
-  let previous = frame_location ray
-      next = map_point deck previous
+through_paired_face deck (OnUniversalCover (RayWithFrame previous direction right up forward) word) =
+  let next = map_point deck previous
       push = map_tangent deck previous
       transported = RayWithFrame
-        next
-        (push (frame_velocity ray))
-        (push (frame_right ray))
-        (push (frame_up ray))
-        (push (frame_forward ray))
+        (map_point deck previous)
+        (push direction)
+        (push right)
+        (push up)
+        (push forward)
   in OnUniversalCover transported (generator_name deck :: word)
 
 -- The caller must establish deck isometry, fundamental-domain membership,

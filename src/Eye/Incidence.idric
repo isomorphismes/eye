@@ -36,11 +36,10 @@ hit_with_normal : {geometry : ThurstonGeometry} → {scalar : Type} →
                   ImplicitSurface geometry scalar →
                   scalar → FramedRay geometry scalar →
                   GeodesicHit geometry scalar
-hit_with_normal surface length framed =
-  let point = frame_location framed
-  in HitAlongRay length point (frame_velocity framed)
+hit_with_normal surface length (RayWithFrame point direction right up forward) =
+  HitAlongRay length point direction
        (differential_at surface point)
-       (frame_right framed) (frame_up framed) (frame_forward framed)
+       right up forward
 
 -- Regina triangulations may contribute faces and incident cells here,
 -- but they do not by themselves certify intrinsic geodesic intersections.

@@ -1,0 +1,13 @@
+module HostScalars
+
+import Eye.Geometry
+import public Eye.Interop.Scalars
+
+-- Binary64 is confined to independent reference calculations.
+export
+finite_binary64 : Double → Bool
+finite_binary64 value = value ≟ value && abs value <= 1.7976931348623157e308
+
+export
+host_numbers : ScalarOperations Float32
+host_numbers = numeric_operations

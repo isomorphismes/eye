@@ -1,0 +1,154 @@
+module Eye.Interop.Scalars
+
+import Eye.Geometry
+
+-- Storage and host literal/reference conversions stay at this boundary.
+-- Every Eye arithmetic operation rounds to its selected width.
+public export
+data ScalarPrecision = SinglePrecision | SignedE4M3
+
+export
+data Scalar : ScalarPrecision → Type where
+  NumericBits : Bits32 → Scalar precision
+
+public export
+Float32 : Type
+Float32 = Scalar SinglePrecision
+
+public export
+FloatE4M3 : Type
+FloatE4M3 = Scalar SignedE4M3
+
+private
+precision_code : ScalarPrecision → Int
+precision_code SinglePrecision = 0
+precision_code SignedE4M3 = 1
+
+%foreign "C:eye_scalar_from_reference,libeye_numeric"
+private
+from_reference_bits : Int → Double → Bits32
+
+%foreign "C:eye_scalar_to_reference,libeye_numeric"
+private
+to_reference_bits : Int → Bits32 → Double
+
+%foreign "C:eye_scalar_add,libeye_numeric"
+private
+add_bits : Int → Bits32 → Bits32 → Bits32
+
+%foreign "C:eye_scalar_multiply,libeye_numeric"
+private
+multiply_bits : Int → Bits32 → Bits32 → Bits32
+
+%foreign "C:eye_scalar_divide,libeye_numeric"
+private
+divide_bits : Int → Bits32 → Bits32 → Bits32
+
+%foreign "C:eye_scalar_negate,libeye_numeric"
+private
+negate_bits : Int → Bits32 → Bits32
+
+%foreign "C:eye_scalar_unary,libeye_numeric"
+private
+unary_bits : Int → Int → Bits32 → Bits32
+
+%foreign "C:eye_scalar_finite,libeye_numeric"
+private
+finite_bits : Int → Bits32 → Int
+
+%foreign "C:eye_scalar_compare,libeye_numeric"
+private
+compare_bits : Int → Int → Bits32 → Bits32 → Int
+
+export
+from_reference : {precision : ScalarPrecision} → Double → Scalar precision
+from_reference {precision} value = NumericBits (from_reference_bits (precision_code precision) value)
+
+export
+to_reference : {precision : ScalarPrecision} → Scalar precision → Double
+to_reference {precision} (NumericBits bits) = to_reference_bits (precision_code precision) bits
+
+export
+scalar_bits : {precision : ScalarPrecision} → Scalar precision → Bits32
+scalar_bits (NumericBits bits) = bits
+
+export
+from_storage : (precision : ScalarPrecision) → Bits32 → Maybe (Scalar precision)
+from_storage precision bits =
+  if precision_code precision ≟ 1 && bits > 255 then Nothing else Just (NumericBits bits)
+
+export
+{precision : ScalarPrecision} → FromDouble (Scalar precision) where
+  fromDouble = from_reference
+
+export
+{precision : ScalarPrecision} → Eq (Scalar precision) where
+  (≟) (NumericBits left) (NumericBits right) =
+    compare_bits (precision_code precision) 0 left right ≟ 1
+
+export
+{precision : ScalarPrecision} → Ord (Scalar precision) where
+  (<) (NumericBits left) (NumericBits right) =
+    compare_bits (precision_code precision) 1 left right ≟ 1
+  (<=) (NumericBits left) (NumericBits right) =
+    compare_bits (precision_code precision) 2 left right ≟ 1
+  (>) left right = right < left
+  (>=) left right = right <= left
+
+export
+{precision : ScalarPrecision} → Num (Scalar precision) where
+  (+) (NumericBits left) (NumericBits right) = NumericBits (add_bits (precision_code precision) left right)
+  (*) (NumericBits left) (NumericBits right) = NumericBits (multiply_bits (precision_code precision) left right)
+  fromInteger value = from_reference (cast value)
+
+export
+{precision : ScalarPrecision} → Neg (Scalar precision) where
+  negate (NumericBits bits) = NumericBits (negate_bits (precision_code precision) bits)
+  (-) left right = left + negate right
+
+export
+{precision : ScalarPrecision} → Abs (Scalar precision) where
+  abs value = if value < 0 then negate value else value
+
+export
+divide_scalar : {precision : ScalarPrecision} → Scalar precision → Scalar precision → Scalar precision
+divide_scalar {precision} (NumericBits left) (NumericBits right) =
+  NumericBits (divide_bits (precision_code precision) left right)
+
+export
+{precision : ScalarPrecision} → Fractional (Scalar precision) where
+  (/) = divide_scalar
+
+export
+finite_scalar : {precision : ScalarPrecision} → Scalar precision → Bool
+finite_scalar {precision} (NumericBits bits) = finite_bits (precision_code precision) bits ≟ 1
+
+private
+unary : {precision : ScalarPrecision} → Int → Scalar precision → Scalar precision
+unary {precision} operation (NumericBits bits) = NumericBits (unary_bits (precision_code precision) operation bits)
+
+export
+scalar_exp : {precision : ScalarPrecision} → Scalar precision → Scalar precision
+scalar_exp = unary 0
+
+export
+scalar_sqrt : {precision : ScalarPrecision} → Scalar precision → Scalar precision
+scalar_sqrt = unary 1
+
+export
+scalar_sin : {precision : ScalarPrecision} → Scalar precision → Scalar precision
+scalar_sin = unary 2
+
+export
+scalar_cos : {precision : ScalarPrecision} → Scalar precision → Scalar precision
+scalar_cos = unary 3
+
+export
+scalar_tan : {precision : ScalarPrecision} → Scalar precision → Scalar precision
+scalar_tan = unary 4
+
+export
+numeric_operations : {precision : ScalarPrecision} → ScalarOperations (Scalar precision)
+numeric_operations = UseScalars 0.0 1.0 (+) negate (*) divide_scalar scalar_exp
+  (\value ⇒ if finite_scalar value && value >= 0.0 then Just (scalar_sqrt value) else Nothing)
+  (<) finite_scalar

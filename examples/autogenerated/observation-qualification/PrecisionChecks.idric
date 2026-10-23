@@ -1,0 +1,44 @@
+module PrecisionChecks
+
+import Data.Text
+import Eye.Geometry
+import Eye.Geodesic
+import Eye.Models
+import Eye.Interop.Scalars
+
+private
+e4m3_round_trip : Number → Bool
+e4m3_round_trip value =
+  case from_storage SignedE4M3 (cast value) of
+    Nothing ⇒ False
+    Just decoded ⇒
+      if value ≟ 127 || value ≟ 255 then not (finite_scalar decoded)
+      else scalar_bits (the FloatE4M3 (from_reference (to_reference decoded))) ≟ cast value
+
+private
+e4m3_stalled_position : Bool
+e4m3_stalled_position =
+  let arithmetic = the (ScalarOperations FloatE4M3) numeric_operations
+      model = model_for Euclidean3 arithmetic
+      starting = RayWithFrame (Located Cartesian (XYZ 64.0 0.0 0.0))
+        (AtPoint (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 0.0 1.0 0.0))
+        (AtPoint (XYZ 0.0 0.0 1.0))
+  in case advance_checked model 0.25 0.5 starting of
+    StepRefused NoRepresentableProgress ⇒ True
+    _ ⇒ False
+
+export
+precision_checks : List (Text, Bool)
+precision_checks =
+  [ ("Float32 rounds each addition", scalar_bits (the Float32 (1.0 + 0.000000059604644775390625)) ≟ scalar_bits (the Float32 1.0))
+  , ("E4M3 all 256 encodings and signed zeros", all e4m3_round_trip [0..255])
+  , ("E4M3 one encoding", scalar_bits (the FloatE4M3 1.0) ≟ 56)
+  , ("E4M3 signed encoding", scalar_bits (the FloatE4M3 (-1.0)) ≟ 184)
+  , ("E4M3 smallest subnormal", scalar_bits (the FloatE4M3 0.001953125) ≟ 1)
+  , ("E4M3 nearest-even lower tie", scalar_bits (the FloatE4M3 (1.0 + 0.0625)) ≟ 56)
+  , ("E4M3 nearest-even upper tie", scalar_bits (the FloatE4M3 (1.125 + 0.0625)) ≟ 58)
+  , ("E4M3 overflow is explicit nonfinite", not (finite_scalar (the FloatE4M3 (448.0 + 32.0))))
+  , ("E4M3 lost positional progress refuses", e4m3_stalled_position)
+  , ("E4M3 storage rejects high bits", case from_storage SignedE4M3 256 of Nothing ⇒ True; Just _ ⇒ False)
+  ]
