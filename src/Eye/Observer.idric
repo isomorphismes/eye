@@ -1,0 +1,114 @@
+module Eye.Observer
+
+import Eye.Geometry
+import Eye.Geodesic
+
+%unbound_implicits off
+
+public export
+data ObserverMotion : ThurstonGeometry → Type → Type where
+  MotionRefused : {geometry : ThurstonGeometry} → {scalar : Type} → StepRefusal → ObserverMotion geometry scalar
+  ObserverMoved : {geometry : ThurstonGeometry} → {scalar : Type} → (Observer geometry scalar) → (StepDiagnostics scalar) → ObserverMotion geometry scalar
+
+export
+move_observer : {geometry : ThurstonGeometry} → {scalar : Type} →
+                MetricConnection geometry scalar → scalar → scalar →
+                (observer : Observer geometry scalar) →
+                Tangent (observer_location observer) → ObserverMotion geometry scalar
+move_observer model length tolerance observer direction =
+  let ray = RayWithFrame (observer_location observer) direction
+              (observer_right observer) (observer_up observer) (observer_forward observer)
+  in case advance_checked model length tolerance ray of
+    StepRefused reason ⇒ MotionRefused reason
+    StepAdvanced reached diagnostics ⇒
+      ObserverMoved (ObserveFrom (frame_location reached)
+        (frame_right reached) (frame_up reached) (frame_forward reached)) diagnostics
+
+-- Turning stays within one fiber. Motion above transports the facing frame;
+-- these are deliberately separate operations. The caller supplies an angle's
+-- cosine/sine in the selected precision, and the unit-circle check can fail.
+export
+turn_observer : {geometry : ThurstonGeometry} → {scalar : Type} →
+                ScalarOperations scalar → scalar → scalar → scalar →
+                Observer geometry scalar → Maybe (Observer geometry scalar)
+turn_observer arithmetic cosine sine tolerance observer =
+  let unit_error = subtract_scalars arithmetic
+        (scalar_add arithmetic (scalar_multiply arithmetic cosine cosine)
+          (scalar_multiply arithmetic sine sine)) (scalar_one arithmetic)
+      magnitude = if scalar_less arithmetic unit_error (scalar_zero arithmetic)
+        then scalar_negate arithmetic unit_error else unit_error
+      right = tangent_components (observer_right observer)
+      forward = tangent_components (observer_forward observer)
+      changed_right = subtract_coordinates arithmetic
+        (scale_coordinates arithmetic cosine right) (scale_coordinates arithmetic sine forward)
+      changed_forward = add_coordinates arithmetic
+        (scale_coordinates arithmetic sine right) (scale_coordinates arithmetic cosine forward)
+  in if not (scalar_finite arithmetic tolerance &&
+             scalar_less arithmetic (scalar_zero arithmetic) tolerance &&
+             scalar_finite arithmetic magnitude && scalar_less arithmetic magnitude tolerance &&
+             coordinate_values_finite arithmetic changed_right &&
+             coordinate_values_finite arithmetic changed_forward)
+       then Nothing
+       else Just (ObserveFrom (observer_location observer) (AtPoint changed_right)
+         (observer_up observer) (AtPoint changed_forward))
+
+-- The view plane lives in the OBSERVER'S tangent fiber. Screen coordinates
+-- are dimensionless coefficients, not offsets of points in ambient R^3.
+-- Normalization is metric-dependent and can fail at zero/non-finite length.
+
+public export
+ray_through_screen : {geometry : ThurstonGeometry} → {scalar : Type} →
+                     MetricConnection geometry scalar →
+                     Observer geometry scalar →
+                     scalar → scalar → Maybe (RayState geometry scalar)
+ray_through_screen model observer horizontal vertical =
+  let arithmetic = numbers model
+      point = observer_location observer
+      camera_direction =
+        add_coordinates arithmetic
+          (tangent_components (observer_forward observer))
+          (add_coordinates arithmetic
+            (scale_coordinates arithmetic horizontal
+              (tangent_components (observer_right observer)))
+            (scale_coordinates arithmetic vertical
+              (tangent_components (observer_up observer))))
+      unnormalized = AtPoint camera_direction
+      squared_length = metric_at model point unnormalized unnormalized
+  in if not (valid_point model point &&
+             scalar_finite arithmetic horizontal &&
+             scalar_finite arithmetic vertical &&
+             scalar_finite arithmetic squared_length &&
+             scalar_less arithmetic (scalar_zero arithmetic) squared_length)
+       then Nothing
+       else case scalar_square_root arithmetic squared_length of
+         Nothing => Nothing
+         Just length =>
+           if not (scalar_finite arithmetic length &&
+                   scalar_less arithmetic (scalar_zero arithmetic) length)
+             then Nothing
+             else
+               let inverse_length = scalar_divide arithmetic
+                     (scalar_one arithmetic) length
+               in Just (RayAt point
+                    (AtPoint (scale_coordinates arithmetic inverse_length camera_direction)))
+
+-- We do not offer an unsafe function to attach an arbitrary ray to an
+-- observer. A ray from another point has another tangent fiber.
+public export
+framed_ray_through_screen : {geometry : ThurstonGeometry} → {scalar : Type} →
+                            MetricConnection geometry scalar →
+                            Observer geometry scalar →
+                            scalar → scalar → Maybe (FramedRay geometry scalar)
+framed_ray_through_screen model observer horizontal vertical =
+  case ray_through_screen model observer horizontal vertical of
+    Nothing => Nothing
+    Just ray =>
+      -- This ray has just been built at observer_location; resampling its
+      -- own components here is a local implementation detail, not a
+      -- general rebase operation.
+      Just (RayWithFrame
+             (observer_location observer)
+             (AtPoint (tangent_components (velocity ray)))
+             (observer_right observer)
+             (observer_up observer)
+             (observer_forward observer))

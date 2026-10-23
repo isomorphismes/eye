@@ -1,0 +1,209 @@
+module Acceptance
+
+import Data.Text
+import System
+import Eye.Geometry
+import Eye.Models
+import Eye.Geodesic
+import Eye.Observer
+import Eye.Visibility
+import Eye.Quotient
+import Eye.Trace
+import Eye.FlatTorus
+import Eye.Incidence
+import Eye.Optics
+import Eye.Checks
+import Eye.Handoff
+import HostScalars
+import IndependentConnection
+import PrecisionChecks
+import BoundaryChecks
+import CompanionChecks
+import PacketChecks
+
+%unbound_implicits off
+
+private
+close : Float32 → Float32 → Bool
+close actual expected = finite_scalar actual && abs (actual - expected) < 2.0e-5
+
+private
+coordinates_close : Coordinates Float32 → Coordinates Float32 → Bool
+coordinates_close (XYZ x y z) (XYZ a b c) = close x a && close y b && close z c
+
+private
+framed : {geometry : ThurstonGeometry} → Chart geometry →
+         Coordinates Float32 → Coordinates Float32 → FramedRay geometry Float32
+framed chart position direction =
+  RayWithFrame (Located chart position) (AtPoint direction)
+    (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 0.0 1.0 0.0))
+    (AtPoint (XYZ 0.0 0.0 1.0))
+
+private
+advance_many : {geometry : ThurstonGeometry} → Number →
+               MetricConnection geometry Float32 → Float32 →
+               FramedRay geometry Float32 → Maybe (FramedRay geometry Float32)
+advance_many Z model step ray = Just ray
+advance_many (S remaining) model step ray =
+  case advance_checked model step 2.0e-5 ray of
+    StepRefused _ ⇒ Nothing
+    StepAdvanced next _ ⇒ advance_many remaining model step next
+
+private
+trajectory : (geometry : ThurstonGeometry) → Chart geometry →
+             Coordinates Float32 → Coordinates Float32 →
+             Coordinates Float32 → Coordinates Float32 → Bool
+trajectory geometry chart position direction expected_position expected_direction =
+  let model = model_for geometry host_numbers
+      starting = framed chart position direction
+  in case advance_many 20 model 0.025 starting of
+    Nothing ⇒ False
+    Just finished ⇒
+      coordinates_close (coordinates_at (frame_location finished)) expected_position &&
+      coordinates_close (tangent_components (frame_velocity finished)) expected_direction &&
+      geodesic_speed_preserved model 2.0e-5 starting finished &&
+      parallel_transport_preserves_gram model 2.0e-5 starting finished
+
+private
+flat_fixture : Coordinates Float32 → Coordinates Float32 → FramedRay Euclidean3 Float32
+flat_fixture position direction = framed Cartesian position direction
+
+private
+hyperbolic_transport : Bool
+hyperbolic_transport =
+  let starting = framed HyperbolicUpperHalfSpace (XYZ 0.0 0.0 1.0) (XYZ 0.0 0.0 1.0)
+      model = model_for Hyperbolic3 host_numbers
+  in case advance_many 20 model 0.025 starting of
+    Nothing ⇒ False
+    Just finished ⇒
+      coordinates_close (tangent_components (frame_right finished)) (XYZ (scalar_exp 0.5) 0.0 0.0) &&
+      orthonormal_frame model 2.0e-5 finished
+
+private
+refuses_step : (geometry : ThurstonGeometry) → Chart geometry →
+               Coordinates Float32 → Coordinates Float32 → Bool
+refuses_step geometry chart position direction =
+  case advance_checked (model_for geometry host_numbers) 0.01 2.0e-5
+         (framed chart position direction) of
+    StepRefused _ ⇒ True
+    StepAdvanced _ _ ⇒ False
+
+private
+torus_crossing : Coordinates Float32 → Coordinates Float32 → Coordinates Float32 → Bool
+torus_crossing position direction expected =
+  let starting = flat_fixture position direction
+  in case trace_empty_flat_torus_window host_numbers 0.5 2.0e-5 (start_lift starting) of
+    CrossedPairedFace finished ⇒
+      coordinates_close (coordinates_at (frame_location (ray_and_frame finished))) expected &&
+      coordinates_close (tangent_components (frame_velocity (ray_and_frame finished))) direction &&
+      parallel_transport_preserves_gram (model_for Euclidean3 host_numbers) 2.0e-5
+        starting (ray_and_frame finished)
+    _ ⇒ False
+
+private
+ray_at : (geometry : ThurstonGeometry) → Chart geometry →
+         Coordinates Float32 → Coordinates Float32 → RayState geometry Float32
+ray_at geometry chart position direction = RayAt (Located chart position) (AtPoint direction)
+
+private
+handoff_round_trip : Bool
+handoff_round_trip =
+  let original = ray_at Hyperbolic3 HyperbolicUpperHalfSpace (XYZ 1.0 2.0 3.0) (XYZ 0.0 0.0 3.0)
+  in case receive_ray Hyperbolic3 (model_for Hyperbolic3 host_numbers) (lower_ray original) of
+    Nothing ⇒ False
+    Just received ⇒
+      coordinates_close (coordinates_at (location received)) (XYZ 1.0 2.0 3.0) &&
+      coordinates_close (tangent_components (velocity received)) (XYZ 0.0 0.0 3.0)
+
+private
+handoff_wrong_geometry : Bool
+handoff_wrong_geometry =
+  let original = ray_at Hyperbolic3 HyperbolicUpperHalfSpace (XYZ 1.0 2.0 3.0) (XYZ 0.0 0.0 3.0)
+  in case receive_ray Euclidean3 (model_for Euclidean3 host_numbers) (lower_ray original) of
+    Nothing ⇒ True
+    Just _ ⇒ False
+
+private
+unknown_is_not_clear : Bool
+unknown_is_not_clear =
+  case first_event {geometry = Euclidean3} host_numbers (UnknownBefore 1.0) of
+    MustRefine _ ⇒ True
+    _ ⇒ False
+
+private
+zero_observer_direction : Bool
+zero_observer_direction =
+  let point = Located Cartesian (XYZ 0.0 0.0 0.0)
+      observer = ObserveFrom point (AtPoint (XYZ 1.0 0.0 0.0))
+                   (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 0.0))
+  in case ray_through_screen (model_for Euclidean3 host_numbers) observer 0.0 0.0 of
+    Nothing ⇒ True
+    Just _ ⇒ False
+
+private
+checks : List (Text, Bool)
+checks =
+  [ ("SL2 coupled trajectory versus independent higher precision midpoint", independent_sl2_trajectory)
+  , ("E3 independent Levi-Civita contraction", independent_connection_check Euclidean3 Cartesian (XYZ 0.3 1.2 0.7))
+  , ("S3 independent Levi-Civita contraction", independent_connection_check Spherical3 Sphere3Stereographic (XYZ 0.3 1.2 0.7))
+  , ("H3 independent Levi-Civita contraction", independent_connection_check Hyperbolic3 HyperbolicUpperHalfSpace (XYZ 0.3 1.2 0.7))
+  , ("S2 product independent Levi-Civita contraction", independent_connection_check Sphere2TimesLine Sphere2StereographicProduct (XYZ 0.3 1.2 0.7))
+  , ("H2 product independent Levi-Civita contraction", independent_connection_check Hyperbolic2TimesLine HyperbolicHalfPlaneProduct (XYZ 0.3 1.2 0.7))
+  , ("Nil independent Levi-Civita contraction", independent_connection_check Nil3 NilHeisenberg (XYZ 0.3 1.2 0.7))
+  , ("Sol independent Levi-Civita contraction", independent_connection_check Sol3 SolStandard (XYZ 0.3 1.2 0.7))
+  , ("SL2 independent Levi-Civita contraction", independent_connection_check UniversalCoverSL2 SL2LiftedHalfPlane (XYZ 0.3 1.2 0.7))
+  , ("E3 straight ray and transported Gram matrix",
+      trajectory Euclidean3 Cartesian (XYZ 0.0 0.0 0.0) (XYZ 1.0 0.5 0.25)
+        (XYZ 0.5 0.25 0.125) (XYZ 1.0 0.5 0.25))
+  , ("S3 stereographic great circle",
+      trajectory Spherical3 Sphere3Stereographic (XYZ 0.0 0.0 0.0) (XYZ 0.5 0.0 0.0)
+        (XYZ (scalar_tan 0.25) 0.0 0.0) (XYZ (0.5 ÷ (scalar_cos 0.25 × scalar_cos 0.25)) 0.0 0.0))
+  , ("H3 vertical geodesic",
+      trajectory Hyperbolic3 HyperbolicUpperHalfSpace (XYZ 0.0 0.0 1.0) (XYZ 0.0 0.0 1.0)
+        (XYZ 0.0 0.0 (scalar_exp 0.5)) (XYZ 0.0 0.0 (scalar_exp 0.5)))
+  , ("S2 times R product geodesic",
+      trajectory Sphere2TimesLine Sphere2StereographicProduct (XYZ 0.0 0.0 0.0) (XYZ 0.4 0.0 0.6)
+        (XYZ (scalar_tan 0.2) 0.0 0.3) (XYZ (0.4 ÷ (scalar_cos 0.2 × scalar_cos 0.2)) 0.0 0.6))
+  , ("H2 times R product geodesic",
+      trajectory Hyperbolic2TimesLine HyperbolicHalfPlaneProduct (XYZ 0.0 1.0 0.0) (XYZ 0.0 0.8 0.6)
+        (XYZ 0.0 (scalar_exp 0.4) 0.3) (XYZ 0.0 (0.8 × scalar_exp 0.4) 0.6))
+  , ("Nil analytic nonstraight geodesic",
+      trajectory Nil3 NilHeisenberg (XYZ 0.0 0.0 0.0) (XYZ 1.0 0.0 1.0)
+        (XYZ (scalar_sin 0.5) (1.0 - scalar_cos 0.5) (0.75 - scalar_sin 1.0 ÷ 4.0))
+        (XYZ (scalar_cos 0.5) (scalar_sin 0.5) (1.0 + scalar_sin 0.5 × scalar_sin 0.5)))
+  , ("Sol balanced exact geodesic",
+      trajectory Sol3 SolStandard (XYZ 0.0 0.0 0.0) (XYZ 1.0 1.0 0.0)
+        (XYZ 0.5 0.5 0.0) (XYZ 1.0 1.0 0.0))
+  , ("lifted SL2 fiber is not wrapped",
+      trajectory UniversalCoverSL2 SL2LiftedHalfPlane (XYZ 0.0 1.0 0.0) (XYZ 0.0 0.0 1.0)
+        (XYZ 0.0 1.0 0.5) (XYZ 0.0 0.0 1.0))
+  , ("H3 transport changes components and preserves length", hyperbolic_transport)
+  , ("H3 invalid domain refuses", refuses_step Hyperbolic3 HyperbolicUpperHalfSpace (XYZ 0.0 0.0 0.0) (XYZ 0.0 0.0 1.0))
+  , ("H2 product invalid domain refuses", refuses_step Hyperbolic2TimesLine HyperbolicHalfPlaneProduct (XYZ 0.0 0.0 0.0) (XYZ 0.0 1.0 0.0))
+  , ("SL2 invalid domain refuses", refuses_step UniversalCoverSL2 SL2LiftedHalfPlane (XYZ 0.0 0.0 0.0) (XYZ 0.0 1.0 0.0))
+  , ("zero ray refuses", refuses_step Euclidean3 Cartesian (XYZ 0.0 0.0 0.0) (XYZ 0.0 0.0 0.0))
+  , ("nonfinite direction refuses", refuses_step Euclidean3 Cartesian (XYZ 0.0 0.0 0.0) (XYZ 1.0e39 0.0 0.0))
+  , ("zero observer direction refuses", zero_observer_direction)
+  , ("unknown event window is not clear", unknown_is_not_clear)
+  , ("handoff round trip", handoff_round_trip)
+  , ("handoff rejects wrong geometry", handoff_wrong_geometry)
+  , ("torus positive x", torus_crossing (XYZ 0.75 0.25 0.5) (XYZ 1.0 0.0 0.0) (XYZ 0.0 0.25 0.5))
+  , ("torus negative x", torus_crossing (XYZ 0.25 0.25 0.5) (XYZ (-1.0) 0.0 0.0) (XYZ 1.0 0.25 0.5))
+  , ("torus positive y", torus_crossing (XYZ 0.25 0.75 0.5) (XYZ 0.0 1.0 0.0) (XYZ 0.25 0.0 0.5))
+  , ("torus negative y", torus_crossing (XYZ 0.25 0.25 0.5) (XYZ 0.0 (-1.0) 0.0) (XYZ 0.25 1.0 0.5))
+  , ("torus positive z", torus_crossing (XYZ 0.25 0.5 0.75) (XYZ 0.0 0.0 1.0) (XYZ 0.25 0.5 0.0))
+  , ("torus negative z", torus_crossing (XYZ 0.25 0.5 0.25) (XYZ 0.0 0.0 (-1.0)) (XYZ 0.25 0.5 1.0))
+  ]
+
+private
+report : List (Text, Bool) → IO Bool
+report [] = pure True
+report ((name, passed) :: rest) = do
+  putStrLn ((if passed then "PASS " else "FAIL ") ++ name)
+  later ← report rest
+  pure (passed && later)
+
+main : IO ()
+main = do
+  passed ← report (precision_checks ++ packet_checks ++ boundary_checks ++ companion_checks ++ checks)
+  if passed then putStrLn "PASS Eye host tests" else exitFailure

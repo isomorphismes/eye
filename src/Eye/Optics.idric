@@ -1,0 +1,47 @@
+module Eye.Optics
+
+import Eye.Geometry
+
+%unbound_implicits off
+
+-- A normal is a covector at the hit. Lighting direction must be computed
+-- or transported TO THAT SAME POINT; raw ambient-coordinate vectors cannot
+-- be paired across different tangent fibers.
+
+public export
+record IncidentGeometry (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor AtIlluminatedPoint
+  illuminated_point : Point geometry scalar
+  outward_normal : Cotangent illuminated_point
+  direction_toward_light : Tangent illuminated_point
+  incoming_view_ray : Tangent illuminated_point
+
+public export
+pair_at_point : {geometry : ThurstonGeometry} → {scalar : Type} →
+                {point : Point geometry scalar} →
+                ScalarOperations scalar →
+                Cotangent point → Tangent point → scalar
+pair_at_point arithmetic (CovectorAt (XYZ nx ny nz)) (AtPoint (XYZ vx vy vz)) =
+  scalar_add arithmetic
+    (scalar_add arithmetic
+      (scalar_multiply arithmetic nx vx)
+      (scalar_multiply arithmetic ny vy))
+    (scalar_multiply arithmetic nz vz)
+
+-- Purely local Lambert cosine weight, clamped to [0,+∞).
+-- A UNIT normal covector and UNIT light direction must already be supplied
+-- using the metric at the hit. Non-finite input is an explicit failure.
+-- Geometry-dependent area attenuation, shadows and radiometry are separate.
+public export
+diffuse_incidence : {geometry : ThurstonGeometry} → {scalar : Type} →
+                    ScalarOperations scalar →
+                    IncidentGeometry geometry scalar → Maybe scalar
+diffuse_incidence arithmetic illuminated =
+  let angle = pair_at_point arithmetic
+                (outward_normal illuminated)
+                (direction_toward_light illuminated)
+  in if not (scalar_finite arithmetic angle)
+       then Nothing
+       else if scalar_less arithmetic angle (scalar_zero arithmetic)
+         then Just (scalar_zero arithmetic)
+         else Just angle

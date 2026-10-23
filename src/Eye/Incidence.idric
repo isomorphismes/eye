@@ -1,0 +1,45 @@
+module Eye.Incidence
+
+import Eye.Geometry
+import Eye.Visibility
+
+%unbound_implicits off
+
+-- An algebraic level-set equation is NOT automatically a signed distance.
+-- Its differential is a covector, and only a geodesic event solver can
+-- certify which root is the first one the observer reaches.
+-- This is the boundary where Fulton-like intersection constraints can enter.
+
+public export
+record ImplicitSurface (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor DefinedByEquation
+  surface_name : Number
+  equation_at : Point geometry scalar → scalar
+  differential_at : (point : Point geometry scalar) → Cotangent point
+
+public export
+record RootAssessment (scalar : Type) where
+  constructor CheckedRoot
+  equation_residual : scalar
+  algebraic_multiplicity : Maybe Number
+
+-- A root assessment is diagnostic, not an intrinsic distance bound or
+-- proof of first intersection along a curved geodesic.
+public export
+record AssessedHit (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor GeometricRoot
+  event : GeodesicHit geometry scalar
+  assessment : RootAssessment scalar
+
+public export
+hit_with_normal : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ImplicitSurface geometry scalar →
+                  scalar → FramedRay geometry scalar →
+                  GeodesicHit geometry scalar
+hit_with_normal surface length (RayWithFrame point direction right up forward) =
+  HitAlongRay length point direction
+       (differential_at surface point)
+       right up forward
+
+-- Regina triangulations may contribute faces and incident cells here,
+-- but they do not by themselves certify intrinsic geodesic intersections.

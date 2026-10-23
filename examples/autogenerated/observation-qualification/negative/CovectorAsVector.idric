@@ -1,0 +1,6 @@
+module CovectorAsVector
+
+import Eye.Geometry
+
+wrong_role : {point : Point Euclidean3 Double} → Cotangent point → Tangent point
+wrong_role normal = normal

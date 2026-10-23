@@ -1,0 +1,85 @@
+module Eye.Handoff
+
+import Eye.Geometry
+
+%unbound_implicits off
+
+-- Logical transfer object only. It does not fix C struct packing, floating
+-- width, DEX object layout, byte order, or an NDK/IPC/graphics ABI.
+-- Preserve geometry and chart identity when lowering dependent types.
+
+public export
+geometry_code : ThurstonGeometry → Number
+geometry_code Euclidean3 = 0
+geometry_code Spherical3 = 1
+geometry_code Hyperbolic3 = 2
+geometry_code Sphere2TimesLine = 3
+geometry_code Hyperbolic2TimesLine = 4
+geometry_code Nil3 = 5
+geometry_code Sol3 = 6
+geometry_code UniversalCoverSL2 = 7
+
+public export
+preferred_chart : (geometry : ThurstonGeometry) → Chart geometry
+preferred_chart Euclidean3 = Cartesian
+preferred_chart Spherical3 = Sphere3Stereographic
+preferred_chart Hyperbolic3 = HyperbolicUpperHalfSpace
+preferred_chart Sphere2TimesLine = Sphere2StereographicProduct
+preferred_chart Hyperbolic2TimesLine = HyperbolicHalfPlaneProduct
+preferred_chart Nil3 = NilHeisenberg
+preferred_chart Sol3 = SolStandard
+preferred_chart UniversalCoverSL2 = SL2LiftedHalfPlane
+
+public export
+chart_code : {geometry : ThurstonGeometry} → Chart geometry → Number
+chart_code Cartesian = 0
+chart_code Sphere3Stereographic = 0
+chart_code Sphere3OppositeStereographic = 1
+chart_code HyperbolicUpperHalfSpace = 0
+chart_code Sphere2StereographicProduct = 0
+chart_code Sphere2OppositeStereographicProduct = 1
+chart_code HyperbolicHalfPlaneProduct = 0
+chart_code NilHeisenberg = 0
+chart_code SolStandard = 0
+chart_code SL2LiftedHalfPlane = 0
+
+export
+receive_chart : (geometry : ThurstonGeometry) → Number → Maybe (Chart geometry)
+receive_chart geometry Z = Just (preferred_chart geometry)
+receive_chart Spherical3 (S Z) = Just Sphere3OppositeStereographic
+receive_chart Sphere2TimesLine (S Z) = Just Sphere2OppositeStereographicProduct
+receive_chart _ _ = Nothing
+
+public export
+record PlainRayPacket (scalar : Type) where
+  constructor RayPacket
+  schema_version : Number
+  space_tag : Number
+  chart_tag : Number
+  encoded_location : Coordinates scalar
+  encoded_velocity : Coordinates scalar
+
+public export
+lower_ray : {geometry : ThurstonGeometry} → {scalar : Type} →
+            RayState geometry scalar → PlainRayPacket scalar
+lower_ray {geometry} (RayAt (Located chart position) (AtPoint direction)) =
+  RayPacket 1 (geometry_code geometry) (chart_code chart) position direction
+
+-- Reattachment checks all tags and coordinate domain. It never silently
+-- reinterprets a point in H³ as a Euclidean point of identical shape.
+public export
+receive_ray : {scalar : Type} →
+              (geometry : ThurstonGeometry) →
+              MetricConnection geometry scalar →
+              PlainRayPacket scalar → Maybe (RayState geometry scalar)
+receive_ray geometry model (RayPacket version space chart position direction) =
+  case receive_chart geometry chart of
+    Nothing => Nothing
+    Just selected_chart =>
+      let arithmetic = numbers model
+          point = Located selected_chart position
+          squared = metric_at model point (AtPoint direction) (AtPoint direction)
+      in if version ≟ 1 && space ≟ geometry_code geometry && valid_point model point &&
+            coordinate_values_finite arithmetic direction && scalar_finite arithmetic squared &&
+            scalar_less arithmetic (scalar_zero arithmetic) squared
+           then Just (RayAt point (AtPoint direction)) else Nothing

@@ -1,0 +1,24 @@
+package eye
+
+version = 0.1.0
+sourcedir = "src"
+
+modules = Eye.Geometry,
+          Eye.Companions.Regina,
+          Eye.Companions.Coxeter,
+          Eye.Atlas,
+          Eye.Models,
+          Eye.Geodesic,
+          Eye.Observer,
+          Eye.Visibility,
+          Eye.Quotient,
+          Eye.Trace,
+          Eye.FlatTorus,
+          Eye.Incidence,
+          Eye.Scene,
+          Eye.Render,
+          Eye.Optics,
+          Eye.Checks,
+          Eye.Handoff,
+          Eye.Interop.Scalars,
+          Eye.Interop.Packet

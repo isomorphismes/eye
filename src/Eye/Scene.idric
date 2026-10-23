@@ -1,0 +1,155 @@
+module Eye.Scene
+
+import Eye.Geometry
+import Eye.Geodesic
+import Eye.Incidence
+import Eye.Visibility
+import Eye.Quotient
+
+%unbound_implicits off
+
+-- A bounded first scene vocabulary: rectangular pieces of x=constant.
+-- In E³ and upper-half-space H³, x is monotone along a geodesic whose x
+-- velocity is nonzero (in H³, x'/z² is constant). Thus each plane has at
+-- most one transverse crossing. This argument does not apply to all eight
+-- geometries. Unsupported traversals and tangencies remain explicit.
+public export
+record PlanePanel (scalar : Type) where
+  constructor Panel
+  panel_name : Number
+  plane_x : scalar
+  minimum_y : scalar
+  maximum_y : scalar
+  minimum_z : scalar
+  maximum_z : scalar
+
+export
+panel_surface : {geometry : ThurstonGeometry} → {scalar : Type} →
+                ScalarOperations scalar → PlanePanel scalar → ImplicitSurface geometry scalar
+panel_surface arithmetic panel = DefinedByEquation (panel_name panel)
+  (\point => case coordinates_at point of XYZ x _ _ => subtract_scalars arithmetic (plane_x panel) x)
+  (\point => CovectorAt (XYZ (scalar_negate arithmetic (scalar_one arithmetic))
+    (scalar_zero arithmetic) (scalar_zero arithmetic)))
+
+private
+record RootBracket (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor RootBetween
+  lower_time : scalar
+  upper_time : scalar
+  middle_time : scalar
+  root_frame : FramedRay geometry scalar
+
+private
+at_time : {geometry : ThurstonGeometry} → {scalar : Type} →
+          MetricConnection geometry scalar → scalar → scalar →
+          FramedRay geometry scalar → Maybe (FramedRay geometry scalar)
+at_time model tolerance time starting =
+  if not (scalar_less (numbers model) (scalar_zero (numbers model)) time)
+    then Just starting
+    else case advance_checked model time tolerance starting of
+      StepRefused _ => Nothing
+      StepAdvanced reached _ => Just reached
+
+private
+search_root : {geometry : ThurstonGeometry} → {scalar : Type} →
+              Number → MetricConnection geometry scalar → scalar → scalar → scalar → Bool →
+              scalar → scalar → FramedRay geometry scalar → Maybe (RootBracket geometry scalar)
+search_root Z model tolerance time_tolerance target increasing lower upper starting = Nothing
+search_root (S later) model tolerance time_tolerance target increasing lower upper starting =
+  let arithmetic = numbers model
+      middle = scalar_divide arithmetic (scalar_add arithmetic lower upper) (scalar_two arithmetic)
+      width = subtract_scalars arithmetic upper lower
+  in case at_time model tolerance middle starting of
+    Nothing => Nothing
+    Just reached => case coordinates_at (frame_location reached) of
+      XYZ x _ _ =>
+        if scalar_less arithmetic width time_tolerance
+          then Just (RootBetween lower upper middle reached)
+          else if not (scalar_less arithmetic lower middle && scalar_less arithmetic middle upper)
+            then Nothing
+            else if not (scalar_less arithmetic x target || scalar_less arithmetic target x)
+              then Just (RootBetween middle middle middle reached)
+              else if (if increasing then scalar_less arithmetic x target else scalar_less arithmetic target x)
+                then search_root later model tolerance time_tolerance target increasing middle upper starting
+                else search_root later model tolerance time_tolerance target increasing lower middle starting
+
+private
+panel_valid : {scalar : Type} → ScalarOperations scalar → PlanePanel scalar → Bool
+panel_valid arithmetic panel =
+  scalar_finite arithmetic (plane_x panel) &&
+  scalar_finite arithmetic (minimum_y panel) && scalar_finite arithmetic (maximum_y panel) &&
+  scalar_finite arithmetic (minimum_z panel) && scalar_finite arithmetic (maximum_z panel) &&
+  scalar_less arithmetic (minimum_y panel) (maximum_y panel) &&
+  scalar_less arithmetic (minimum_z panel) (maximum_z panel)
+
+private
+panel_at_root : {geometry : ThurstonGeometry} → {scalar : Type} →
+                ScalarOperations scalar → scalar → scalar → PlanePanel scalar →
+                RootBracket geometry scalar → EventWindow geometry scalar
+panel_at_root arithmetic horizon edge_uncertainty panel root =
+  case coordinates_at (frame_location (root_frame root)) of
+    XYZ _ y z =>
+      let below_y = scalar_less arithmetic y (subtract_scalars arithmetic (minimum_y panel) edge_uncertainty)
+          above_y = scalar_less arithmetic (scalar_add arithmetic (maximum_y panel) edge_uncertainty) y
+          below_z = scalar_less arithmetic z (subtract_scalars arithmetic (minimum_z panel) edge_uncertainty)
+          above_z = scalar_less arithmetic (scalar_add arithmetic (maximum_z panel) edge_uncertainty) z
+          inside = scalar_less arithmetic (scalar_add arithmetic (minimum_y panel) edge_uncertainty) y &&
+            scalar_less arithmetic y (subtract_scalars arithmetic (maximum_y panel) edge_uncertainty) &&
+            scalar_less arithmetic (scalar_add arithmetic (minimum_z panel) edge_uncertainty) z &&
+            scalar_less arithmetic z (subtract_scalars arithmetic (maximum_z panel) edge_uncertainty)
+      in if below_y || above_y || below_z || above_z then CompleteBefore horizon []
+         else if not inside then UnknownBefore horizon
+         else CompleteBefore horizon [BracketedSurface (panel_name panel)
+           (lower_time root) (upper_time root)
+           (hit_with_normal (panel_surface arithmetic panel) (middle_time root) (root_frame root))]
+
+private
+one_panel_window : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   MetricConnection geometry scalar → scalar → scalar → scalar → scalar →
+                   PlanePanel scalar → FramedRay geometry scalar → EventWindow geometry scalar
+one_panel_window model tolerance time_tolerance edge_uncertainty horizon panel starting =
+  let arithmetic = numbers model
+      target = plane_x panel
+      zero = scalar_zero arithmetic
+  in if not (panel_valid arithmetic panel && scalar_finite arithmetic horizon && scalar_less arithmetic zero horizon)
+       then InvalidWindow InvalidEventArithmetic
+       else case (coordinates_at (frame_location starting), tangent_components (frame_velocity starting)) of
+         (XYZ x _ _, XYZ vx _ _) =>
+           if not (scalar_finite arithmetic x && scalar_finite arithmetic vx)
+             then InvalidWindow InvalidEventArithmetic
+             else if not (scalar_less arithmetic vx zero || scalar_less arithmetic zero vx)
+               then if scalar_less arithmetic x target || scalar_less arithmetic target x
+                      then CompleteBefore horizon [] else InvalidWindow TangentialPanelUnresolved
+               else case at_time model tolerance horizon starting of
+                 Nothing => UnknownBefore horizon
+                 Just finished => case coordinates_at (frame_location finished) of
+                   XYZ final_x _ _ =>
+                     let increasing = scalar_less arithmetic zero vx
+                         outside = if increasing then scalar_less arithmetic target x || scalar_less arithmetic final_x target
+                                   else scalar_less arithmetic x target || scalar_less arithmetic target final_x
+                     in if outside then CompleteBefore horizon []
+                        else if not (scalar_less arithmetic x target || scalar_less arithmetic target x)
+                          then panel_at_root arithmetic horizon edge_uncertainty panel (RootBetween zero zero zero starting)
+                          else case search_root 24 model tolerance time_tolerance target increasing zero horizon starting of
+                            Nothing => InvalidWindow RootRefinementExhausted
+                            Just root => panel_at_root arithmetic horizon edge_uncertainty panel root
+
+private
+all_panel_windows : {geometry : ThurstonGeometry} → {scalar : Type} →
+                    MetricConnection geometry scalar → scalar → scalar → scalar → scalar →
+                    List (PlanePanel scalar) → FramedRay geometry scalar → EventWindow geometry scalar
+all_panel_windows model tolerance time_tolerance edge_uncertainty horizon [] starting = CompleteBefore horizon []
+all_panel_windows model tolerance time_tolerance edge_uncertainty horizon (panel :: rest) starting =
+  combine_windows (numbers model)
+    (one_panel_window model tolerance time_tolerance edge_uncertainty horizon panel starting)
+    (all_panel_windows model tolerance time_tolerance edge_uncertainty horizon rest starting)
+
+export
+scene_window : {scalar : Type} → (geometry : ThurstonGeometry) →
+               MetricConnection geometry scalar → scalar → scalar → scalar →
+               List (PlanePanel scalar) → scalar → LiftedRay geometry scalar → EventWindow geometry scalar
+scene_window Euclidean3 model tolerance time_tolerance edge_uncertainty panels horizon lifted =
+  all_panel_windows model tolerance time_tolerance edge_uncertainty horizon panels (ray_and_frame lifted)
+scene_window Hyperbolic3 model tolerance time_tolerance edge_uncertainty panels horizon lifted =
+  all_panel_windows model tolerance time_tolerance edge_uncertainty horizon panels (ray_and_frame lifted)
+scene_window _ _ _ _ _ _ _ _ = InvalidWindow UnsupportedSceneTraversal

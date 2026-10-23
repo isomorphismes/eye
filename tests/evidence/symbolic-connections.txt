@@ -1,0 +1,12 @@
+Historical host evidence — maintained Idriç 0e8cfdd1106ebdeffd01b6c519880ea3afc7dc35
+Ithon 74ab6d6044b07b76a910978437a34a6b5ac6acda
+exit=0
+PASS symbolic Levi-Civita E3
+PASS symbolic Levi-Civita S3
+PASS symbolic Levi-Civita H3
+PASS symbolic Levi-Civita S2xR
+PASS symbolic Levi-Civita H2xR
+PASS symbolic Levi-Civita Nil
+PASS symbolic Levi-Civita Sol
+PASS symbolic Levi-Civita SL2cover
+PASS eight symbolic contractions

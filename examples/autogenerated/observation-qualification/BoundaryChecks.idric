@@ -1,0 +1,210 @@
+module BoundaryChecks
+
+import Data.Text
+import Eye.Geometry
+import Eye.Models
+import Eye.Geodesic
+import Eye.Observer
+import Eye.Atlas
+import Eye.Optics
+import Eye.Visibility
+import Eye.Quotient
+import Eye.Trace
+import Eye.FlatTorus
+import Eye.Checks
+import Eye.Scene
+import Eye.Interop.Scalars
+
+private
+frame : {precision : ScalarPrecision} → Coordinates (Scalar precision) →
+        Coordinates (Scalar precision) → FramedRay Euclidean3 (Scalar precision)
+frame point direction = RayWithFrame (Located Cartesian point) (AtPoint direction)
+  (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+
+private
+close : {precision : ScalarPrecision} → Coordinates (Scalar precision) → Coordinates (Scalar precision) → Bool
+close left right = case subtract_coordinates numeric_operations left right of
+  XYZ x y z ⇒ x ≟ 0.0 && y ≟ 0.0 && z ≟ 0.0
+
+private
+empty_scene : {precision : ScalarPrecision} → Scalar precision → LiftedRay Euclidean3 (Scalar precision) → EventWindow Euclidean3 (Scalar precision)
+empty_scene horizon _ = CompleteBefore horizon []
+
+private
+travel_torus : {precision : ScalarPrecision} → Scalar precision →
+               Coordinates (Scalar precision) → Coordinates (Scalar precision) →
+               Coordinates (Scalar precision) → Number → Bool
+travel_torus distance position direction expected expected_words =
+  let arithmetic = numeric_operations
+      model = model_for Euclidean3 arithmetic
+      initial = start_lift (frame position direction)
+  in case trace_bounded 128 12 model (torus_services arithmetic empty_scene)
+            0.25 distance 0.5 initial of
+    TravelLimitReached elapsed finished ⇒
+      elapsed ≟ distance && close (coordinates_at (frame_location (ray_and_frame finished))) expected &&
+      length (crossed_deck_generators finished) ≟ expected_words &&
+      close (tangent_components (frame_velocity (ray_and_frame finished))) direction
+    _ ⇒ False
+
+private
+unknown_terminates : Bool
+unknown_terminates =
+  let arithmetic = the (ScalarOperations Float32) numeric_operations
+      services = TraceWith (\horizon, _ ⇒ UnknownBefore horizon)
+        (\_ ⇒ Nothing) (\_, _ ⇒ Nothing) (\_ ⇒ Nothing)
+  in case trace_bounded 32 2 (model_for Euclidean3 arithmetic) services
+            0.00002 1.0 0.5 (start_lift (frame (XYZ 0.0 0.0 0.0) (XYZ 1.0 0.0 0.0))) of
+    JourneyStopped _ RefinementBudgetExhausted _ ⇒ True
+    _ ⇒ False
+
+private
+event_tie_refuses : Bool
+event_tie_refuses =
+  let point = Located Cartesian (the (Coordinates Float32) (XYZ 0.5 0.0 0.0))
+      hit = HitAlongRay 0.5 point (AtPoint (XYZ 1.0 0.0 0.0)) (CovectorAt (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+  in case first_event numeric_operations (CompleteBefore 1.0 [SceneSurface 1 hit, FundamentalFace 0 hit]) of
+    MustRefine _ ⇒ True
+    _ ⇒ False
+
+private
+scene_precedes_face : Bool
+scene_precedes_face =
+  let point = Located Cartesian (the (Coordinates Float32) (XYZ 0.875 0.25 0.5))
+      hit = HitAlongRay 0.125 point (AtPoint (XYZ 1.0 0.0 0.0)) (CovectorAt (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 1.0 0.0 0.0)) (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+      provider = \horizon, _ ⇒ CompleteBefore horizon [SceneSurface 7 hit]
+      arithmetic = the (ScalarOperations Float32) numeric_operations
+  in case trace_bounded 32 2 (model_for Euclidean3 arithmetic) (torus_services arithmetic provider)
+            0.00002 1.0 0.5 (start_lift (frame (XYZ 0.75 0.25 0.5) (XYZ 1.0 0.0 0.0))) of
+    JourneyHit elapsed label _ ⇒ elapsed ≟ 0.125 && label ≟ 7
+    _ ⇒ False
+
+private
+atlas_pairing : Bool
+atlas_pairing =
+  let arithmetic = the (ScalarOperations Float32) numeric_operations
+      point = Located Sphere3Stereographic (the (Coordinates Float32) (XYZ 2.0 0.0 0.0))
+  in case opposite_chart arithmetic point of
+    Nothing ⇒ False
+    Just change ⇒
+      let direction = push_direction change (AtPoint (XYZ 0.0 1.0 0.0))
+          normal = change_covector change (CovectorAt (XYZ 0.0 1.0 0.0))
+          pairing = pair_at_point arithmetic normal direction
+          model = model_for Spherical3 arithmetic
+          squared = metric_at model (destination_point change) direction direction
+      in abs (pairing - 1.0) < 0.00002 && abs (squared - 0.16) < 0.00002
+
+private
+atlas_round_trip : Bool
+atlas_round_trip =
+  let arithmetic = the (ScalarOperations Float32) numeric_operations
+      original = RayWithFrame (Located Sphere2StereographicProduct (the (Coordinates Float32) (XYZ 1.5 0.5 3.0)))
+        (AtPoint (XYZ 0.5 1.0 0.25)) (AtPoint (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+      model = model_for Sphere2TimesLine arithmetic
+  in case change_ray_chart arithmetic original of
+    Nothing ⇒ False
+    Just changed ⇒ case change_ray_chart arithmetic changed of
+      Nothing ⇒ False
+      Just restored ⇒
+        parallel_transport_preserves_gram model 0.00002 original changed &&
+        geodesic_speed_preserved model 0.00002 original changed &&
+        case coordinates_at (frame_location restored) of
+          XYZ x y z ⇒ abs (x - 1.5) < 0.00002 && abs (y - 0.5) < 0.00002 && z ≟ 3.0
+
+private
+observer_facing_moves : Bool
+observer_facing_moves =
+  let point = Located HyperbolicUpperHalfSpace (the (Coordinates Float32) (XYZ 0.0 0.0 1.0))
+      observer = ObserveFrom point (AtPoint (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+  in case move_observer (model_for Hyperbolic3 numeric_operations) 0.125 0.00002 observer
+            (AtPoint (XYZ 0.0 0.0 1.0)) of
+    MotionRefused _ ⇒ False
+    ObserverMoved moved _ ⇒ case tangent_components (observer_right moved) of
+      XYZ x _ _ ⇒ abs (x - scalar_exp 0.125) < 0.00002
+
+private
+spherical_pole_traversal : Bool
+spherical_pole_traversal =
+  let arithmetic = the (ScalarOperations Float32) numeric_operations
+      model = model_for Spherical3 arithmetic
+      starting = RayWithFrame (Located Sphere3Stereographic (the (Coordinates Float32) (XYZ 0.0 0.0 0.0)))
+        (AtPoint (XYZ 0.5 0.0 0.0)) (AtPoint (XYZ 0.5 0.0 0.0))
+        (AtPoint (XYZ 0.0 0.5 0.0)) (AtPoint (XYZ 0.0 0.0 0.5))
+  in case trace_bounded 512 12 model (empty_geometry_services model) 0.00002 4.0 0.125 (start_lift starting) of
+    TravelLimitReached elapsed finished ⇒
+      let ray = ray_and_frame finished
+      in elapsed ≟ 4.0 && parallel_transport_preserves_gram model 0.0001 starting ray &&
+         case frame_location ray of
+           Located Sphere3OppositeStereographic (XYZ x y z) ⇒
+             abs (x - divide_scalar (scalar_cos 2.0) (scalar_sin 2.0)) < 0.00005 &&
+             abs y < 0.00005 && abs z < 0.00005
+           _ ⇒ False
+    _ ⇒ False
+
+private
+convergence_steps : Number → Float32 → FramedRay Hyperbolic3 Float32 → Maybe (FramedRay Hyperbolic3 Float32)
+convergence_steps Z step ray = Just ray
+convergence_steps (S later) step ray =
+  case advance_checked (model_for Hyperbolic3 numeric_operations) step 0.01 ray of
+    StepRefused _ ⇒ Nothing
+    StepAdvanced next _ ⇒ convergence_steps later step next
+
+private
+tangent_panel_refuses : Bool
+tangent_panel_refuses =
+  let model = model_for Euclidean3 (the (ScalarOperations Float32) numeric_operations)
+      ray = start_lift (frame (XYZ 0.0 0.0 0.0) (XYZ 0.0 1.0 0.0))
+  in case scene_window Euclidean3 model 0.00002 0.00002 0.001
+            [Panel 1 0.0 (-1.0) 1.0 (-1.0) 1.0] 0.125 ray of
+    InvalidWindow TangentialPanelUnresolved ⇒ True
+    _ ⇒ False
+
+private
+hyperbolic_convergence : Bool
+hyperbolic_convergence =
+  let starting = RayWithFrame (Located HyperbolicUpperHalfSpace (the (Coordinates Float32) (XYZ 0.0 0.0 1.0)))
+        (AtPoint (XYZ 0.0 0.0 1.0)) (AtPoint (XYZ 1.0 0.0 0.0))
+        (AtPoint (XYZ 0.0 1.0 0.0)) (AtPoint (XYZ 0.0 0.0 1.0))
+      expected : Double
+      expected = exp 1.0
+  in case (convergence_steps 2 0.5 starting, convergence_steps 4 0.25 starting) of
+    (Just coarse, Just fine) ⇒
+      let coarse_error = abs (height coarse - expected)
+          fine_error = abs (height fine - expected)
+      in fine_error < coarse_error ÷ 4.0 && fine_error < 0.00002
+    _ ⇒ False
+  where
+    height : FramedRay Hyperbolic3 Float32 → Double
+    height ray = case coordinates_at (frame_location ray) of XYZ _ _ z ⇒ to_reference z
+
+export
+boundary_checks : List (Text, Bool)
+boundary_checks =
+  [ ("torus repeated positive travel", travel_torus (the Float32 2.0) (XYZ 0.75 0.25 0.5) (XYZ 1.0 0.0 0.0) (XYZ 0.75 0.25 0.5) 2)
+  , ("torus repeated negative travel", travel_torus (the Float32 2.0) (XYZ 0.25 0.25 0.5) (XYZ (-1.0) 0.0 0.0) (XYZ 0.25 0.25 0.5) 2)
+  , ("torus face exactly at travel limit", travel_torus (the Float32 0.25) (XYZ 0.75 0.25 0.5) (XYZ 1.0 0.0 0.0) (XYZ 0.0 0.25 0.5) 1)
+  , ("torus starts on negative face", travel_torus (the Float32 0.5) (XYZ 0.0 0.25 0.5) (XYZ (-1.0) 0.0 0.0) (XYZ 0.5 0.25 0.5) 1)
+  , ("torus starts on positive face", travel_torus (the Float32 0.5) (XYZ 1.0 0.25 0.5) (XYZ 1.0 0.0 0.0) (XYZ 0.5 0.25 0.5) 1)
+  , ("torus starts on negative y face", travel_torus (the Float32 0.5) (XYZ 0.25 0.0 0.5) (XYZ 0.0 (-1.0) 0.0) (XYZ 0.25 0.5 0.5) 1)
+  , ("torus starts on positive y face", travel_torus (the Float32 0.5) (XYZ 0.25 1.0 0.5) (XYZ 0.0 1.0 0.0) (XYZ 0.25 0.5 0.5) 1)
+  , ("torus starts on negative z face", travel_torus (the Float32 0.5) (XYZ 0.25 0.5 0.0) (XYZ 0.0 0.0 (-1.0)) (XYZ 0.25 0.5 0.5) 1)
+  , ("torus starts on positive z face", travel_torus (the Float32 0.5) (XYZ 0.25 0.5 1.0) (XYZ 0.0 0.0 1.0) (XYZ 0.25 0.5 0.5) 1)
+  , ("torus resumes negative boundary representative", travel_torus (the Float32 0.5) (XYZ 1.0 0.25 0.5) (XYZ (-1.0) 0.0 0.0) (XYZ 0.5 0.25 0.5) 0)
+  , ("torus simultaneous corner at travel limit", travel_torus (the Float32 0.25) (XYZ 0.75 0.75 0.75) (XYZ 1.0 1.0 1.0) (XYZ 0.0 0.0 0.0) 3)
+  , ("torus simultaneous negative corner", travel_torus (the Float32 0.5) (XYZ 0.25 0.25 0.25) (XYZ (-1.0) (-1.0) (-1.0)) (XYZ 0.75 0.75 0.75) 3)
+  , ("torus simultaneous edge", travel_torus (the Float32 0.25) (XYZ 0.75 0.75 0.5) (XYZ 1.0 1.0 0.0) (XYZ 0.0 0.0 0.5) 2)
+  , ("E4M3 real repeated torus execution", travel_torus (the FloatE4M3 2.0) (XYZ 0.75 0.25 0.5) (XYZ 1.0 0.0 0.0) (XYZ 0.75 0.25 0.5) 2)
+  , ("E4M3 real negative torus execution", travel_torus (the FloatE4M3 2.0) (XYZ 0.25 0.25 0.5) (XYZ (-1.0) 0.0 0.0) (XYZ 0.25 0.25 0.5) 2)
+  , ("unknown scene exhausts refinement explicitly", unknown_terminates)
+  , ("surface and quotient tie refuses arbitrary ordering", event_tie_refuses)
+  , ("populated scene occludes a later quotient face", scene_precedes_face)
+  , ("spherical chart transports tangent and normal covector", atlas_pairing)
+  , ("spherical product chart round trip and line preservation", atlas_round_trip)
+  , ("observer motion transports facing", observer_facing_moves)
+  , ("S3 trace crosses old stereographic pole through opposite chart", spherical_pole_traversal)
+  , ("H3 analytic convergence on halving the step", hyperbolic_convergence)
+  , ("tangential panel intersection explicitly unresolved", tangent_panel_refuses)
+  ]

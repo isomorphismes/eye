@@ -1,0 +1,83 @@
+Historical host evidence — maintained Idriç 0e8cfdd1106ebdeffd01b6c519880ea3afc7dc35
+Ithon 74ab6d6044b07b76a910978437a34a6b5ac6acda
+exit=0
+PASS Float32 rounds each addition
+PASS E4M3 all 256 encodings and signed zeros
+PASS E4M3 one encoding
+PASS E4M3 signed encoding
+PASS E4M3 smallest subnormal
+PASS E4M3 nearest-even lower tie
+PASS E4M3 nearest-even upper tie
+PASS E4M3 overflow is explicit nonfinite
+PASS E4M3 lost positional progress refuses
+PASS E4M3 storage rejects high bits
+PASS Float32 complete frame byte round trip
+PASS E4M3 complete frame byte round trip
+PASS Float32 handoff tags, size and little-endian one
+PASS handoff rejects wrong tags and malformed lengths
+PASS E4M3 handoff uses exactly 23 bytes
+PASS frame byte handoff preserves the opposite spherical chart
+PASS torus repeated positive travel
+PASS torus repeated negative travel
+PASS torus face exactly at travel limit
+PASS torus starts on negative face
+PASS torus starts on positive face
+PASS torus starts on negative y face
+PASS torus starts on positive y face
+PASS torus starts on negative z face
+PASS torus starts on positive z face
+PASS torus resumes negative boundary representative
+PASS torus simultaneous corner at travel limit
+PASS torus simultaneous negative corner
+PASS torus simultaneous edge
+PASS E4M3 real repeated torus execution
+PASS E4M3 real negative torus execution
+PASS unknown scene exhausts refinement explicitly
+PASS surface and quotient tie refuses arbitrary ordering
+PASS populated scene occludes a later quotient face
+PASS spherical chart transports tangent and normal covector
+PASS spherical product chart round trip and line preservation
+PASS observer motion transports facing
+PASS S3 trace crosses old stereographic pole through opposite chart
+PASS H3 analytic convergence on halving the step
+PASS tangential panel intersection explicitly unresolved
+PASS Regina imported six-tetrahedron torus incidence
+PASS Regina incidence is used in a face lookup
+PASS Regina missing pairing refuses
+PASS Coxeter exact A3 proof replay
+PASS Coxeter A3 generators are not A2 evidence
+PASS Coxeter rejects fabricated covering relation
+PASS SL2 coupled trajectory versus independent higher precision midpoint
+PASS E3 independent Levi-Civita contraction
+PASS S3 independent Levi-Civita contraction
+PASS H3 independent Levi-Civita contraction
+PASS S2 product independent Levi-Civita contraction
+PASS H2 product independent Levi-Civita contraction
+PASS Nil independent Levi-Civita contraction
+PASS Sol independent Levi-Civita contraction
+PASS SL2 independent Levi-Civita contraction
+PASS E3 straight ray and transported Gram matrix
+PASS S3 stereographic great circle
+PASS H3 vertical geodesic
+PASS S2 times R product geodesic
+PASS H2 times R product geodesic
+PASS Nil analytic nonstraight geodesic
+PASS Sol balanced exact geodesic
+PASS lifted SL2 fiber is not wrapped
+PASS H3 transport changes components and preserves length
+PASS H3 invalid domain refuses
+PASS H2 product invalid domain refuses
+PASS SL2 invalid domain refuses
+PASS zero ray refuses
+PASS nonfinite direction refuses
+PASS zero observer direction refuses
+PASS unknown event window is not clear
+PASS handoff round trip
+PASS handoff rejects wrong geometry
+PASS torus positive x
+PASS torus negative x
+PASS torus positive y
+PASS torus negative y
+PASS torus positive z
+PASS torus negative z
+PASS Eye host tests

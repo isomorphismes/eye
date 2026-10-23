@@ -1,0 +1,57 @@
+module Eye.Companions.Coxeter
+
+-- Narrow replay boundary based on reducer.py::validate_step/replay at
+-- walnut-burgundy/coxeter bdb763cff452359f28529ae37dfdf089e49be8a0.
+-- Only the actual finite A2/A3 presentations are admitted. No function here
+-- identifies a covering-group word from equality in a finite quotient.
+public export
+data FinitePresentation = FiniteA2 | FiniteA3
+
+public export
+data Relation = CancelInvolution | CommuteOrderTwo | BraidOrderThree
+
+public export
+record WordRewrite where
+  constructor RewriteWord
+  before_word : List Number
+  after_word : List Number
+  relation : Relation
+  starting_position : Number
+
+private
+rank : FinitePresentation → Number
+rank FiniteA2 = 2
+rank FiniteA3 = 3
+
+private
+valid_word : FinitePresentation → List Number → Bool
+valid_word presentation = all (\generator ⇒ generator > 0 && generator <= rank presentation)
+
+private
+adjacent : Number → Number → Bool
+adjacent left right = S left ≟ right || S right ≟ left
+
+private
+apply_relation : Relation → List Number → Maybe (List Number)
+apply_relation CancelInvolution (left :: right :: rest) = if left ≟ right then Just rest else Nothing
+apply_relation CommuteOrderTwo (left :: right :: rest) =
+  if not (left ≟ right || adjacent left right) then Just (right :: left :: rest) else Nothing
+apply_relation BraidOrderThree (left :: middle :: right :: rest) =
+  if left ≟ right && adjacent left middle then Just (middle :: left :: middle :: rest) else Nothing
+apply_relation _ _ = Nothing
+
+private
+rewrite_at : Number → Relation → List Number → Maybe (List Number)
+rewrite_at Z relation word = apply_relation relation word
+rewrite_at (S later) relation [] = Nothing
+rewrite_at (S later) relation (first :: rest) = map (first ::) (rewrite_at later relation rest)
+
+export
+replay : FinitePresentation → List Number → List WordRewrite → Maybe (List Number)
+replay presentation original [] = if valid_word presentation original then Just original else Nothing
+replay presentation original (step :: rest) =
+  if not (valid_word presentation original && valid_word presentation (after_word step) && original ≟ before_word step)
+    then Nothing
+    else case rewrite_at (starting_position step) (relation step) original of
+      Nothing ⇒ Nothing
+      Just rewritten ⇒ if rewritten ≟ after_word step then replay presentation rewritten rest else Nothing

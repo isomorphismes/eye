@@ -1,0 +1,9 @@
+module PositiveFiber
+
+import Eye.Geometry
+
+same_fiber : {point : Point Euclidean3 Double} → Tangent point → Tangent point
+same_fiber direction = direction
+
+same_role : {point : Point Euclidean3 Double} → Cotangent point → Cotangent point
+same_role normal = normal

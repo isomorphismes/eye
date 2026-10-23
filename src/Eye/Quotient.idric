@@ -1,0 +1,50 @@
+module Eye.Quotient
+
+import Data.Text
+import Eye.Geometry
+
+%unbound_implicits off
+
+-- Quotients use a deck action on POINTS together with its DIFFERENTIAL on
+-- their own tangent fibers. The word records symbolic provenance; equality
+-- of different words requires an external exact rewriting certificate.
+-- We do not guess generators from a nearly orthogonal numerical matrix.
+
+public export
+record DeckAction (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor SuppliedDeckAction
+  generator_name : Text
+  map_point : Point geometry scalar → Point geometry scalar
+  map_tangent : (point : Point geometry scalar) →
+                Tangent point → Tangent (map_point point)
+
+public export
+record LiftedRay (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor OnUniversalCover
+  ray_and_frame : FramedRay geometry scalar
+  crossed_deck_generators : List Text
+
+public export
+start_lift : {geometry : ThurstonGeometry} → {scalar : Type} →
+             FramedRay geometry scalar → LiftedRay geometry scalar
+start_lift ray = OnUniversalCover ray []
+
+public export
+through_paired_face : {geometry : ThurstonGeometry} → {scalar : Type} →
+                      DeckAction geometry scalar → LiftedRay geometry scalar →
+                      LiftedRay geometry scalar
+through_paired_face deck (OnUniversalCover (RayWithFrame previous direction right up forward) word) =
+  let next = map_point deck previous
+      push = map_tangent deck previous
+      transported = RayWithFrame
+        (map_point deck previous)
+        (push direction)
+        (push right)
+        (push up)
+        (push forward)
+  in OnUniversalCover transported (generator_name deck :: word)
+
+-- The caller must establish deck isometry, fundamental-domain membership,
+-- orientation, exact word relations, and the face-pairing certificate.
+-- In finite Coxeter A2/A3, walnut-burgundy/coxeter has replayable reductions;
+-- these must not be reused for an infinite [2,3,7] group without new proofs.

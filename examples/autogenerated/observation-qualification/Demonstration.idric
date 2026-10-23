@@ -1,0 +1,38 @@
+module Demonstration
+
+import Data.Text
+import System
+import System.File
+import Eye.Geometry
+import Eye.Models
+import Eye.Observer
+import Eye.Render
+import Eye.Interop.Scalars
+
+private
+write_scene : Text → Text → IO ()
+write_scene path content = do
+  result ← writeFile path content
+  case result of
+    Left error ⇒ do putStrLn ("FAIL " ++ path ++ ": " ++ show error); exitFailure
+    Right () ⇒ putStrLn ("RENDERED " ++ path)
+
+private
+write_pair : Text → Text → (geometry : ThurstonGeometry) → Bool → IO ()
+write_pair directory name geometry torus = do
+  let initial = initial_observer geometry torus
+  write_scene (directory ++ "/" ++ name ++ "-before.ppm") (render_ppm geometry torus initial)
+  case move_observer (model_for geometry numeric_operations) 0.125 0.00002 initial (observer_forward initial) of
+    MotionRefused _ ⇒ do putStrLn "FAIL observer motion"; exitFailure
+    ObserverMoved moved _ ⇒
+      write_scene (directory ++ "/" ++ name ++ "-moved.ppm") (render_ppm geometry torus moved)
+
+main : IO ()
+main = do
+  arguments ← getArgs
+  case arguments of
+    [_ , directory] ⇒ do
+      write_pair directory "euclidean" Euclidean3 False
+      write_pair directory "flat-torus" Euclidean3 True
+      write_pair directory "hyperbolic" Hyperbolic3 False
+    _ ⇒ do putStrLn "usage: eye-host-demo ABSOLUTE_OUTPUT_DIRECTORY"; exitFailure

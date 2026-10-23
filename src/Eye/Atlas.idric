@@ -1,0 +1,157 @@
+module Eye.Atlas
+
+import Eye.Geometry
+import Eye.Visibility
+import Eye.Quotient
+import Eye.Trace
+
+%unbound_implicits off
+
+-- The opposite stereographic coordinate is x / |x|². For the product
+-- chart only the spherical coordinates change; the line coordinate stays.
+-- Normals transform by the inverse transpose, not by the tangent Jacobian.
+public export
+record ChartTransition {geometry : ThurstonGeometry} {scalar : Type}
+                       (source_point : Point geometry scalar) where
+  constructor BetweenCharts
+  destination_point : Point geometry scalar
+  push_direction : Tangent source_point → Tangent destination_point
+  change_covector : Cotangent source_point → Cotangent destination_point
+
+private
+spherical_part : {scalar : Type} → ScalarOperations scalar → Bool →
+                 Coordinates scalar → Coordinates scalar
+spherical_part arithmetic product (XYZ x y z) =
+  XYZ x y (if product then scalar_zero arithmetic else z)
+
+private
+retain_line : {scalar : Type} → Bool → Coordinates scalar → Coordinates scalar → Coordinates scalar
+retain_line True (XYZ _ _ original_line) (XYZ x y _) = XYZ x y original_line
+retain_line False original changed = changed
+
+private
+invert_coordinates : {scalar : Type} → ScalarOperations scalar → Bool →
+                     scalar → Coordinates scalar → Coordinates scalar
+invert_coordinates arithmetic product squared values =
+  retain_line product values
+    (scale_coordinates arithmetic (scalar_divide arithmetic (scalar_one arithmetic) squared) values)
+
+private
+push_components : {scalar : Type} → ScalarOperations scalar → Bool →
+                  scalar → Coordinates scalar → Coordinates scalar → Coordinates scalar
+push_components arithmetic product squared position direction =
+  let point = spherical_part arithmetic product position
+      vector = spherical_part arithmetic product direction
+      pairing = dot_coordinates arithmetic point vector
+      inverse_squared = scalar_divide arithmetic (scalar_one arithmetic) squared
+      twice_pairing = scalar_multiply arithmetic (scalar_two arithmetic) pairing
+      coefficient = scalar_multiply arithmetic twice_pairing
+        (scalar_multiply arithmetic inverse_squared inverse_squared)
+  in retain_line product direction
+    (subtract_coordinates arithmetic (scale_coordinates arithmetic inverse_squared vector)
+      (scale_coordinates arithmetic coefficient point))
+
+private
+covector_components : {scalar : Type} → ScalarOperations scalar → Bool →
+                      scalar → Coordinates scalar → Coordinates scalar → Coordinates scalar
+covector_components arithmetic product squared position normal =
+  let point = spherical_part arithmetic product position
+      covector = spherical_part arithmetic product normal
+      twice_pairing = scalar_multiply arithmetic (scalar_two arithmetic)
+        (dot_coordinates arithmetic point covector)
+  in retain_line product normal
+    (subtract_coordinates arithmetic (scale_coordinates arithmetic squared covector)
+      (scale_coordinates arithmetic twice_pairing point))
+
+private
+make_transition : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ScalarOperations scalar → Bool → Chart geometry →
+                  (source : Point geometry scalar) → Maybe (ChartTransition source)
+make_transition arithmetic product destination source =
+  let position = coordinates_at source
+      spherical_position = spherical_part arithmetic product position
+      squared = dot_coordinates arithmetic spherical_position spherical_position
+      changed = invert_coordinates arithmetic product squared position
+      next = Located destination changed
+  in if not (scalar_finite arithmetic squared &&
+             scalar_less arithmetic (scalar_zero arithmetic) squared &&
+             coordinate_values_finite arithmetic changed)
+       then Nothing
+       else Just (BetweenCharts next
+         (\(AtPoint direction) ⇒ AtPoint (push_components arithmetic product squared position direction))
+         (\(CovectorAt normal) ⇒ CovectorAt (covector_components arithmetic product squared position normal)))
+
+export
+opposite_chart : {geometry : ThurstonGeometry} → {scalar : Type} →
+                 ScalarOperations scalar → (source : Point geometry scalar) →
+                 Maybe (ChartTransition source)
+opposite_chart arithmetic source@(Located Sphere3Stereographic _) =
+  make_transition arithmetic False Sphere3OppositeStereographic source
+opposite_chart arithmetic source@(Located Sphere3OppositeStereographic _) =
+  make_transition arithmetic False Sphere3Stereographic source
+opposite_chart arithmetic source@(Located Sphere2StereographicProduct _) =
+  make_transition arithmetic True Sphere2OppositeStereographicProduct source
+opposite_chart arithmetic source@(Located Sphere2OppositeStereographicProduct _) =
+  make_transition arithmetic True Sphere2StereographicProduct source
+opposite_chart arithmetic _ = Nothing
+
+export
+change_ray_chart : {geometry : ThurstonGeometry} → {scalar : Type} →
+                   ScalarOperations scalar → FramedRay geometry scalar →
+                   Maybe (FramedRay geometry scalar)
+change_ray_chart arithmetic ray =
+  case opposite_chart arithmetic (frame_location ray) of
+    Nothing ⇒ Nothing
+    Just transition ⇒ Just (RayWithFrame (destination_point transition)
+      (push_direction transition (frame_velocity ray))
+      (push_direction transition (frame_right ray))
+      (push_direction transition (frame_up ray))
+      (push_direction transition (frame_forward ray)))
+
+private
+balance_spherical_chart : {scalar : Type} → ScalarOperations scalar → Bool →
+                          Coordinates scalar → Coordinates scalar → Bool
+balance_spherical_chart arithmetic product position direction =
+  let point = spherical_part arithmetic product position
+      velocity = spherical_part arithmetic product direction
+      squared = dot_coordinates arithmetic point point
+      one = scalar_one arithmetic
+      outward = scalar_less arithmetic (scalar_zero arithmetic) (dot_coordinates arithmetic point velocity)
+  in scalar_less arithmetic one squared ||
+     (not (scalar_less arithmetic squared one) && outward)
+
+private
+needs_balancing : {geometry : ThurstonGeometry} → {scalar : Type} →
+                  ScalarOperations scalar → FramedRay geometry scalar → Bool
+needs_balancing arithmetic ray =
+  let position = coordinates_at (frame_location ray)
+      direction = tangent_components (frame_velocity ray)
+  in case chart_at (frame_location ray) of
+    Sphere3Stereographic => balance_spherical_chart arithmetic False position direction
+    Sphere3OppositeStereographic => balance_spherical_chart arithmetic False position direction
+    Sphere2StereographicProduct => balance_spherical_chart arithmetic True position direction
+    Sphere2OppositeStereographicProduct => balance_spherical_chart arithmetic True position direction
+    _ => False
+
+-- An atlas-balancing event at the current point precedes another numerical
+-- step. At radius one, only an outward direction changes charts, so inversion
+-- does not cause a zero-time cycle. With radius <=1 the angular-step guard
+-- keeps a spherical step safely away from the omitted pole. These are atlas
+-- events, not scene coverage or quotient identifications.
+export
+atlas_window : {geometry : ThurstonGeometry} → {scalar : Type} →
+               MetricConnection geometry scalar → scalar → LiftedRay geometry scalar → EventWindow geometry scalar
+atlas_window model horizon lifted =
+  let arithmetic = numbers model
+      ray = ray_and_frame lifted
+  in if not (valid_point model (frame_location ray)) then InvalidWindow InvalidEventArithmetic
+     else if needs_balancing arithmetic ray
+       then CompleteBefore horizon [CoordinateChartExit (scalar_zero arithmetic)]
+       else CompleteBefore horizon []
+
+export
+empty_geometry_services : {geometry : ThurstonGeometry} → {scalar : Type} →
+                          MetricConnection geometry scalar → TraceServices geometry scalar
+empty_geometry_services model =
+  TraceWith (atlas_window model) (\_ => Nothing) (\_, _ => Nothing)
+    (change_ray_chart (numbers model))

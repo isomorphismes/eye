@@ -1,0 +1,202 @@
+module Eye.Geometry
+
+%unbound_implicits off
+
+-- Intrinsic state is indexed by a Thurston geometry AND a base point.
+-- Cartesian triples are representations in one chart, not global vectors.
+-- The scalar carrier and its machine width are selected by a lower layer.
+
+public export
+data ThurstonGeometry
+  = Euclidean3
+  | Spherical3
+  | Hyperbolic3
+  | Sphere2TimesLine
+  | Hyperbolic2TimesLine
+  | Nil3
+  | Sol3
+  | UniversalCoverSL2
+
+public export
+data Chart : ThurstonGeometry → Type where
+  Cartesian : Chart Euclidean3
+  Sphere3Stereographic : Chart Spherical3
+  Sphere3OppositeStereographic : Chart Spherical3
+  HyperbolicUpperHalfSpace : Chart Hyperbolic3
+  Sphere2StereographicProduct : Chart Sphere2TimesLine
+  Sphere2OppositeStereographicProduct : Chart Sphere2TimesLine
+  HyperbolicHalfPlaneProduct : Chart Hyperbolic2TimesLine
+  NilHeisenberg : Chart Nil3
+  SolStandard : Chart Sol3
+  SL2LiftedHalfPlane : Chart UniversalCoverSL2
+
+public export
+data Coordinates : Type → Type where
+  XYZ : {scalar : Type} → scalar → scalar → scalar → Coordinates scalar
+
+public export
+data Point : ThurstonGeometry → Type → Type where
+  Located : {geometry : ThurstonGeometry} → {scalar : Type} →
+            Chart geometry → Coordinates scalar → Point geometry scalar
+
+-- An unindexed Coordinates value may cross a numeric ABI, but never
+-- masquerades as an intrinsically typed tangent or point.
+public export
+data Tangent : {geometry : ThurstonGeometry} →
+               {scalar : Type} → Point geometry scalar → Type where
+  AtPoint : {geometry : ThurstonGeometry} →
+            {scalar : Type} →
+            {point : Point geometry scalar} →
+            Coordinates scalar → Tangent point
+
+public export
+data Cotangent : {geometry : ThurstonGeometry} →
+                 {scalar : Type} → Point geometry scalar → Type where
+  CovectorAt : {geometry : ThurstonGeometry} →
+               {scalar : Type} →
+               {point : Point geometry scalar} →
+               Coordinates scalar → Cotangent point
+
+public export
+record RayState (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor RayAt
+  location : Point geometry scalar
+  velocity : Tangent location
+
+-- Three frame axes travel with the ray. Their Gram matrix must be tested;
+-- constructing this record does not magically prove orthonormality.
+public export
+record FramedRay (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor RayWithFrame
+  frame_location : Point geometry scalar
+  frame_velocity : Tangent frame_location
+  frame_right : Tangent frame_location
+  frame_up : Tangent frame_location
+  frame_forward : Tangent frame_location
+
+public export
+record Observer (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor ObserveFrom
+  observer_location : Point geometry scalar
+  observer_right : Tangent observer_location
+  observer_up : Tangent observer_location
+  observer_forward : Tangent observer_location
+
+public export
+coordinates_at : {geometry : ThurstonGeometry} → {scalar : Type} →
+                 Point geometry scalar → Coordinates scalar
+coordinates_at (Located _ values) = values
+
+public export
+chart_at : {geometry : ThurstonGeometry} → {scalar : Type} →
+           Point geometry scalar → Chart geometry
+chart_at (Located chart _) = chart
+
+public export
+tangent_components : {geometry : ThurstonGeometry} →
+                     {scalar : Type} →
+                     {point : Point geometry scalar} →
+                     Tangent point → Coordinates scalar
+tangent_components (AtPoint values) = values
+
+-- No implicit standard metric, unit conversion, or scalar precision.
+-- This interface is a lower-layer contract, not a built-in Float64 choice.
+public export
+record ScalarOperations (scalar : Type) where
+  constructor UseScalars
+  scalar_zero : scalar
+  scalar_one : scalar
+  scalar_add : scalar → scalar → scalar
+  scalar_negate : scalar → scalar
+  scalar_multiply : scalar → scalar → scalar
+  scalar_divide : scalar → scalar → scalar
+  scalar_exponential : scalar → scalar
+  scalar_square_root : scalar → Maybe scalar
+  scalar_less : scalar → scalar → Bool
+  scalar_finite : scalar → Bool
+
+public export
+subtract_scalars : {scalar : Type} → ScalarOperations scalar →
+                   scalar → scalar → scalar
+subtract_scalars arithmetic left right =
+  scalar_add arithmetic left (scalar_negate arithmetic right)
+
+public export
+scalar_two : {scalar : Type} → ScalarOperations scalar → scalar
+scalar_two arithmetic =
+  scalar_add arithmetic (scalar_one arithmetic) (scalar_one arithmetic)
+
+public export
+scalar_four : {scalar : Type} → ScalarOperations scalar → scalar
+scalar_four arithmetic =
+  scalar_multiply arithmetic (scalar_two arithmetic) (scalar_two arithmetic)
+
+public export
+scalar_six : {scalar : Type} → ScalarOperations scalar → scalar
+scalar_six arithmetic =
+  scalar_add arithmetic (scalar_four arithmetic) (scalar_two arithmetic)
+
+public export
+add_coordinates : {scalar : Type} → ScalarOperations scalar →
+                  Coordinates scalar → Coordinates scalar → Coordinates scalar
+add_coordinates arithmetic (XYZ x y z) (XYZ u v w) =
+  XYZ (scalar_add arithmetic x u)
+      (scalar_add arithmetic y v)
+      (scalar_add arithmetic z w)
+
+public export
+negate_coordinates : {scalar : Type} → ScalarOperations scalar →
+                     Coordinates scalar → Coordinates scalar
+negate_coordinates arithmetic (XYZ x y z) =
+  XYZ (scalar_negate arithmetic x)
+      (scalar_negate arithmetic y)
+      (scalar_negate arithmetic z)
+
+public export
+subtract_coordinates : {scalar : Type} → ScalarOperations scalar →
+                       Coordinates scalar → Coordinates scalar → Coordinates scalar
+subtract_coordinates arithmetic left right =
+  add_coordinates arithmetic left (negate_coordinates arithmetic right)
+
+public export
+scale_coordinates : {scalar : Type} → ScalarOperations scalar →
+                    scalar → Coordinates scalar → Coordinates scalar
+scale_coordinates arithmetic amount (XYZ x y z) =
+  XYZ (scalar_multiply arithmetic amount x)
+      (scalar_multiply arithmetic amount y)
+      (scalar_multiply arithmetic amount z)
+
+public export
+zero_coordinates : {scalar : Type} → ScalarOperations scalar → Coordinates scalar
+zero_coordinates arithmetic =
+  XYZ (scalar_zero arithmetic) (scalar_zero arithmetic) (scalar_zero arithmetic)
+
+public export
+dot_coordinates : {scalar : Type} → ScalarOperations scalar →
+                  Coordinates scalar → Coordinates scalar → scalar
+dot_coordinates arithmetic (XYZ x y z) (XYZ u v w) =
+  scalar_add arithmetic
+    (scalar_add arithmetic
+      (scalar_multiply arithmetic x u)
+      (scalar_multiply arithmetic y v))
+    (scalar_multiply arithmetic z w)
+
+public export
+coordinate_values_finite : {scalar : Type} → ScalarOperations scalar →
+                           Coordinates scalar → Bool
+coordinate_values_finite arithmetic (XYZ x y z) =
+  scalar_finite arithmetic x &&
+  scalar_finite arithmetic y &&
+  scalar_finite arithmetic z
+
+-- Christoffel contraction is Γ^k_ij v^i w^j in the CURRENT chart.
+-- It is NOT itself the covariant derivative of an arbitrary vector field.
+public export
+record MetricConnection (geometry : ThurstonGeometry) (scalar : Type) where
+  constructor WithConnection
+  numbers : ScalarOperations scalar
+  valid_point : Point geometry scalar → Bool
+  metric_at : (point : Point geometry scalar) →
+              Tangent point → Tangent point → scalar
+  christoffel_at : (point : Point geometry scalar) →
+                   Tangent point → Tangent point → Coordinates scalar
