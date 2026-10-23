@@ -2,7 +2,7 @@
 
 **Status (2026-10-22): source-authored first vertical slice; NOT compiler-qualified,
 backend-executed, Android-tested, merged, or rendered.** The source extends the
-notes branch in Eye PR #1, not a substitute for verifying that corpus. There is
+enhanced 50-note corpus branch in Eye PR #2, not a substitute for verifying that corpus. There is
 no Flexible Pipes dependency for this one-off implementation.
 
 ## What the source does
@@ -29,6 +29,11 @@ no Flexible Pipes dependency for this one-off implementation.
   complete windows and equal-parameter ties refuse selection.
 - [Quotient](../src/Eye/Quotient.idric) acts on points **and** their tangent
   fibers, including camera frame axes; it retains a symbolic deck word.
+- [FlatTorus](../src/Eye/FlatTorus.idric) is the first concrete E³/Z³
+  empty-scene quotient: solve positive cube-face crossing times, refuse
+  coincident faces, propagate rays by the exact Euclidean flow, and apply
+  signed unit translations with their identity tangent differential.
+  It intentionally certifies face events **only in an empty scene**.
 - [Incidence](../src/Eye/Incidence.idric) distinguishes a defining equation,
   its covector differential, an assessed root, and the *first along-ray event*.
 - [Optics](../src/Eye/Optics.idric) pairs a normal covector with a local
@@ -124,17 +129,18 @@ acceptance.
    singularity handling, and comparison to analytic rays.
 4. **Atlases:** chart transitions and tangent/normal/frame Jacobians.
    Spherical stereographic charts omit a pole. No transition is implemented.
-5. **Global quotients:** certified side pairings, faithful group actions,
-   nearest seam event, and correct repeated scenery; no arbitrary lattice
-   inference from a topology file.
+5. **Global quotients:** only the empty flat three-torus's explicit cube
+   translations and face times have source code. Other groups still need
+   certified side pairings, faithful actions, nearest seam events and
+   repeated scenery; never infer lattices from topology alone.
 6. **Ray/event oracles:** root isolation, conservative distance bounds,
    first-hit guarantees, coincident event refinement and no tunneling.
 7. **Rendering:** finite sampling/lighting/occlusion contracts, an actual
    C/NDK/DEX/graphics handoff, and an APK/device qualification if required.
 
-The next runnable target is E³ + a flat torus event/face-pairing sample, then
-the H³ vertical ray, with source-compiled Idriç and independently measured
-native output. The [reference cases](../tests/REFERENCE.md) specify concrete
+The first *source-authored* E³ flat-torus face-pairing sample now exists.
+The next runnable target is its compiler-qualified execution and an independent
+H³ vertical-ray oracle, followed by measured native output. The [reference cases](../tests/REFERENCE.md) specify concrete
 expected results.
 
 This is a direct repository implementation. It neither dispatches nor depends

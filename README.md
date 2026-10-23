@@ -11,6 +11,7 @@
 [Observer rays](src/Eye/Observer.idric) ·
 [Scene and event ordering](src/Eye/Visibility.idric) ·
 [Quotient action](src/Eye/Quotient.idric) ·
+[Concrete flat-torus crossing](src/Eye/FlatTorus.idric) ·
 [Intrinsic surface incidence](src/Eye/Incidence.idric) ·
 [Local lighting](src/Eye/Optics.idric) ·
 [Ray-step decisions](src/Eye/Trace.idric) ·
@@ -20,9 +21,10 @@
 
 All eight local metrics and Christoffel contractions have been independently
 matched against the Levi-Civita formula. **The .idric modules have not been
-typechecked or executed with the maintained compiler.** Global chart
-transitions, certified intersection/event oracles, backend wiring, and
-rendering are still missing. The numerical stepper exposes diagnostics,
+typechecked or executed with the maintained compiler.** A concrete empty-scene flat-torus face-crossing model now provides an
+exact Euclidean flow oracle and explicit deck translations. Global chart
+transitions, general certified intersection/event oracles, backend wiring,
+and rendering are still missing. The numerical stepper exposes diagnostics,
 not a certified global error bound.
 
 The semantic owner is Idriç; C, Lua, NDK and DEX are target/native boundaries

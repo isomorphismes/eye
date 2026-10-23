@@ -36,6 +36,26 @@ implementation used to generate pictures.
    Γ(v,v)=(0,1,0) and hence y''(0)=−1. A direct product H²×R model
    gives the wrong local coupling.
 
+## Concrete flat-torus source fixture
+
+[`src/Eye/FlatTorus.idric`](../src/Eye/FlatTorus.idric)
+constructs this example. Supply scalar operations with finite comparisons,
+division and integer-like 0/1 arithmetic, and an orthonormal Euclidean
+frame at p=(0.8,0.25,0.4) with v=(1,0,0). For horizon=0.3:
+
+- `next_cube_face` identifies the **maximum x face** at t=0.2.
+- `empty_cube_window` returns the sole face candidate and its normal.
+- `trace_empty_flat_torus_window` crosses that face and applies x−1,
+  producing p=(0,0.25,0.4). The direction and all three frame axes remain
+  unchanged; its symbolic word records the x−1 generator.
+- A simultaneous edge/corner crossing must return refinement, not choose an
+  axis silently. With a nearer scene object, the *empty-scene* provider cannot
+  claim the window is complete.
+
+These are expected observations, **not compiler-executed assertions**.
+A future compiled fixture must compare exact/representable binary inputs,
+rounding tolerance, and independent analytic flow.
+
 ## Runtime contract checks
 
 - Metric: positive/finite at a valid point, correct domain failure when
