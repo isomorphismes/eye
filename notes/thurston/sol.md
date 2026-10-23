@@ -11,3 +11,5 @@
 **Isometries and quotients.** Coordinate changes $(x,y,z)\mapsto(e^{-c}x,e^cy,z+c)$ are isometries; together with horizontal translations and finite symmetries they describe a useful subgroup. Quotients arising from hyperbolic torus automorphisms require the appropriate lattice and face-pairing transforms, not a naive periodic box.
 
 **Observer example and limits.** Rays with $p_x=p_y\ne0$ and $\dot z(0)=0$ can initially balance the two horizontal forces at $z=0$, while small changes in $z$ alter their relative costs. Geodesics are generally not coordinate straight lines. The companion shader contains distinct numerical and elliptic-function flow paths (e.g. numFlow and ellFlow); approximation quality, near-degenerate cases, and expensive distance estimates require separate qualification.
+
+**Exact curvature and ray cross-checks:** [Lie-frame and coordinate verification for Sol](../worked/lie-group-curvature.md).

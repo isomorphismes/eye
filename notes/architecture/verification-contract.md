@@ -1,6 +1,6 @@
 # Verification and acceptance contracts
 
-**Status: proposed acceptance criteria; not an execution log.** This file exists to prevent an indexed notes branch being presented as an independently accepted renderer or as mathematical proof beyond what the written derivations support.
+**Scope: one-off notes review and verification ledger.** The task needs no Flexible Pipes dispatch. Distinguish demonstrable local mathematics and source checks from unrun numerical solvers, independent human/AI-CI review, or renderer acceptance. A merged documentation commit means the notes entered the repository, not that every formula has a machine-checked formal proof.
 
 ## Required static checks
 
@@ -18,13 +18,13 @@
 | Round sphere | equator $\theta=\pi/2,\phi=t$; latitude $\theta=\pi/3$ has holonomy angle $\pi\bmod2\pi$ | compare orthonormal frame return, geodesic/non-geodesic residual |
 | Hyperbolic half-plane | $x=0,y=e^t$, $K=-1$, $W(t)=e^t W_0$ in coordinate components | speed, transport and reversibility for bounded $t$ |
 | Flat three-torus | face crossing at $t=1/5$, wall hit at $t=3/10$ | event ordering, deck action, seam continuity and first-hit identity |
-| Nil / Sol / SL2 | orthonormal-frame Koszul, speed, homogeneous isometry | cross-check metric convention, frame brackets, flow residual and quotient differential |
+| Nil / Sol / SL2 | exact frame Koszul and coordinate-curvature calculation at identity: $K_{12},K_{13},K_{23}=(-3/4,1/4,1/4),(1,-1,-1),(-7/4,1/4,1/4)$; explicit IVPs | compare numerical flow with exact rays, metric speed, and quotient differential |
 
-Here **oracle** means a mathematical expression available to check; no listed future numerical run has happened just because this table is committed.
+Here **oracle** means a mathematical expression available to check; no listed future numerical run has happened just because this table is committed. The three Lie-frame sectional-curvature triples were independently computed using both frame brackets/Koszul and coordinate-metric curvature, with exact arithmetic, during the authoring review. [Detailed equations](../worked/lie-group-curvature.md).
 
-## Runtime execution boundary
+## One-off repository review boundary
 
-No GitHub commit alone certifies Flexible Pipes admission. A proposal must have an admitted job envelope, maintained Kitchen/Ike implementation, source-identified receipts and separate **AI-CI** acceptance evidence before stating accepted. A draft pull request is merely a review location and should not be misreported as merging or shipping.
+The user explicitly waived Flexible Pipes for this one-off research corpus. The permitted completion route is a normal GitHub documentation PR reviewed for substantive content, checked relative links, verified bibliography/coordinates, and an ordinary merge. **No Flexible Pipes envelope, Kitchen/Ike receipts, AI-CI admission or graphics build are required for this one-off merge.** Do not report independent AI-CI or external mathematical review unless it actually runs; do not describe a documentation merge as runtime qualification.
 
 Independently compare derivations against another symbolic implementation **after** mapping coordinate and curvature signs. Suggested exact checks: direct metric differentiation, curvature antisymmetry, transport ODE residuals, energy invariants and quotient-event arithmetic. For a numerical implementation, test chart transitions, signed/estimated distances, integration step convergence, nontrivial deck maps and conjugate/cut locus behavior.
 

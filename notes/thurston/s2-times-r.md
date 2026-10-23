@@ -4,7 +4,7 @@
 
 **Model and metric.** $X=\{(p,z):p\in S^2\subset\mathbb R^3,\ z\in\mathbb R\}$, $g=g_{S^2}+dz^2$. A tangent vector is $(v,a)$ with $p\cdot v=0$. Curvature is $+1$ on two-planes tangent to $S^2$, $0$ on planes spanned by a sphere direction and $\partial_z$; this is not a constant-curvature 3-space.
 
-**Connection and geodesics.** The Levi-Civita connection splits: $\nabla_{(U,u)}(V,v)=(\nabla^{S^2}_UV,U(v))$ in the product frame (with fields extended appropriately). For initial $(p_0,z_0;v,a)$, let $b=\|v\|$. If $b>0$, $p(t)=p_0\cos(bt)+(v/b)\sin(bt)$ and $z(t)=z_0+at$; for $b=0$, the sphere position is constant. Unit speed requires $b^2+a^2=1$. Parallel transport also splits into sphere and line factors.
+**Connection and geodesics.** The Levi-Civita connection splits. For fields $(U,u)$ and $(V,v)$ whose coefficients may depend on the product coordinate $z$, one has $\nabla_{(U,u)}(V,v)=(\nabla^{S^2}_U V+u\,\partial_z V,\ U(v)+u\,\partial_z v)$ in a product chart. If the fields are independent of $z$, the two $\partial_z$ terms vanish. For initial $(p_0,z_0;v,a)$, let $b=\|v\|$. If $b>0$, $p(t)=p_0\cos(bt)+(v/b)\sin(bt)$ and $z(t)=z_0+at$; for $b=0$, the sphere position is constant. Unit speed requires $b^2+a^2=1$. Parallel transport also splits into sphere and line factors.
 
 **Isometries and quotients.** Obvious isometries are $O(3)$ on the sphere and translations/reflections on $\mathbb R$. Quotients can identify vertical positions or combine rotations with a vertical translation. The metric and deck isometries are separate inputs; a vertical periodic identification changes repeated imagery without changing local ray equations.
 

@@ -2,7 +2,7 @@
 
 **Status: inspected open-access arXiv HTML.**
 
-Tiago Novello, Vinícius da Silva, Luiz Velho, Mikhail Belolipetsky, *How to see the eight Thurston geometries*, [arXiv:2005.12772](https://arxiv.org/abs/2005.12772), first submitted 26 May 2020. [HTML text](https://arxiv.org/html/2005.12772) if available for the selected version.
+Tiago Novello, Vinícius da Silva, Luiz Velho, Mikhail Belolipetsky, *How to see the eight Thurston geometries*, [arXiv:2005.12772v4](https://arxiv.org/abs/2005.12772), first submitted 26 May 2020, revision 14 September 2021. [HTML text](https://arxiv.org/html/2005.12772) if available for the selected version.
 
 The expository purpose is useful: start with geometrization, explain why an intrinsic three-dimensional space is not the view of an embedded two-dimensional sheet, then formulate rendering as a color assigned to a point plus a tangent direction. The authors survey immersive approaches and the eight geometries rather than implement a single universal differential-geometric solver. Read together with [Scott](scott-geometries.md) for geometric classification and [Coulon et al.](ray-marching-thurston.md) for specific forward-flow and distance algorithms.
 
